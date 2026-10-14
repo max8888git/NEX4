@@ -5561,6 +5561,37 @@
       }
     }
 
+    function editMetaHtml(cls) {
+      var kind = String(cls.component || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+      if (kind) kind = kind.charAt(0).toUpperCase() + kind.slice(1);
+      var sections = membersOf(cls).map(function (m) {
+        return '<span>' + escapeHtml(sectionLabel(m.sectionName, m.studentCount, m)) + '</span>';
+      }).join('');
+      var facts = '';
+      if (sections) {
+        facts += '<dt>Sections</dt><dd class="sched-edit-meta-sections">' + sections + '</dd>';
+      }
+      facts += '<dt>In this class</dt><dd>' + escapeHtml(studentCountLabel(classStudentCount(cls))) + '</dd>';
+      if (cls.roomTypeName) {
+        facts += '<dt>Room type</dt><dd>' + escapeHtml(cls.roomTypeName) + '</dd>';
+      }
+      if (!subjectNeedsCampusRoom(cls)) {
+        facts += '<dt>Campus room</dt><dd>Not used</dd>';
+      }
+      return (
+        '<div class="sched-edit-meta-head"><strong>' +
+        escapeHtml(cls.courseCode) +
+        '</strong>' +
+        (kind ? '<span class="sched-edit-meta-kind">' + escapeHtml(kind) + '</span>' : '') +
+        (cls.mergedClassId ? '<span class="sched-edit-meta-badge">Merged</span>' : '') +
+        '</div><p class="sched-edit-meta-title">' +
+        escapeHtml(cls.courseTitle) +
+        '</p><dl class="sched-edit-meta-facts">' +
+        facts +
+        '</dl>'
+      );
+    }
+
     function openEditModal(cls, meeting) {
       if (scheduleLocked() || !editModal || !cls) return;
       if (collegeLocked(cls.collegeId)) {
@@ -5576,23 +5607,7 @@
       var members = membersOf(cls);
       var targets = targetOptionsFor(cls);
       qs('schedEditTitle').textContent = 'Edit class';
-      qs('schedEditMeta').innerHTML =
-        '<strong>' +
-        escapeHtml(cls.courseCode) +
-        '</strong> — ' +
-        escapeHtml(cls.courseTitle) +
-        ' <em>' +
-        escapeHtml(cls.component) +
-        '</em><br>' +
-        escapeHtml(members.map(function (m) { return sectionLabel(m.sectionName, m.studentCount, m); }).join(', ')) +
-        ' · ' +
-        escapeHtml(studentCountLabel(classStudentCount(cls))) +
-        ' in this class' +
-        (cls.mergedClassId ? ' · merged' : '') +
-        (cls.roomTypeName
-          ? '<br>Room type: ' + escapeHtml(cls.roomTypeName) +
-            (subjectNeedsCampusRoom(cls) ? '' : ' · no campus room')
-          : '');
+      qs('schedEditMeta').innerHTML = editMetaHtml(cls);
       var meetBox = qs('schedEditMeeting');
       if (meetBox) meetBox.hidden = false;
       renderMeetingList(cls, meeting && meeting.id);

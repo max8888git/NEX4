@@ -334,7 +334,7 @@
         <button type="button" class="sched-edit-view is-active" id="schedEditViewSession" aria-pressed="true">This session</button>
         <button type="button" class="sched-edit-view" id="schedEditViewSections" aria-pressed="false">Sections</button>
       </div>
-      <p class="sched-edit-meta" id="schedEditMeta"></p>
+      <div class="sched-edit-meta" id="schedEditMeta"></div>
       <div id="schedEditMeeting">
         <div class="sched-edit-section sched-edit-section--tight" id="schedEditMeetingListWrap">
           <h3 class="sched-edit-classic-only">Meetings</h3>
