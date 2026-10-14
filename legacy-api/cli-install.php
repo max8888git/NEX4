@@ -52,7 +52,7 @@ $pdo->exec('USE `mcu_nex`');
 
 $has = $pdo->query("SHOW TABLES LIKE 'colleges'")->fetch();
 if (!$has) {
-  $schema = dirname(__DIR__) . '/database_schema.sql';
+  $schema = dirname(__DIR__) . '/database/mcu_nex_schema.sql';
   run_sql_script($pdo, (string) file_get_contents($schema));
   echo "Schema installed.\n";
 } else {

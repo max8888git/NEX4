@@ -3,17 +3,28 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/schedule-workspaces.php';
+require_once __DIR__ . '/schedule-colleges.php';
+require_once __DIR__ . '/room-rules.php';
 
 function run_schedule_request(): void
 {
 $pdo = db();
 ensure_schedule_schema($pdo);
+ensure_college_approval_schema($pdo);
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 if ($method === 'GET') {
   try {
     if (trim((string) ($_GET['home'] ?? '')) === 'vpaa') {
       json_ok(vpaa_home_status($pdo));
+    }
+    // the college's own VPAA-approved timetable (schedule-colleges.php)
+    if (!empty($_GET['college_final'])) {
+      json_ok(college_final_for_viewer($pdo, ['term' => $_GET['term'] ?? 0]));
+    }
+    // per-college approval status (schedule-colleges.php)
+    if (!empty($_GET['colleges'])) {
+      json_ok(college_status_overview($pdo, ['year' => $_GET['year'] ?? '', 'sem' => $_GET['sem'] ?? '1']));
     }
     $year = trim((string) ($_GET['year'] ?? ''));
     $sem = normalize_term_code((string) ($_GET['sem'] ?? '1'));
@@ -39,6 +50,12 @@ if ($method === 'POST') {
     );
     try {
     $pdo->beginTransaction();
+    // per-college approval actions (schedule-colleges.php)
+    if (in_array($action, COLLEGE_ACTIONS, true)) {
+      $out = college_action($pdo, $body, $action);
+      $pdo->commit();
+      json_ok($out);
+    }
     $dispatch = static function () use ($pdo, &$body, $action): array {
       if ($action === 'decide') {
         return decide_merge($pdo, $body);
@@ -156,6 +173,11 @@ if ($method === 'POST') {
       $out = $dispatch();
     }
     $out = merge_workspace_into_result($pdo, $body, $workspace, (string) ($body['page'] ?? 'create'), $out);
+    // keep the per-college approval rows in step with the whole-campus actions
+    if (in_array($action, TERM_WIDE_APPROVAL_ACTIONS, true)) {
+      [, , $approvalTermId] = resolve_term_for_year_sem($pdo, $body, false);
+      college_rows_from_term($pdo, $approvalTermId);
+    }
     log_schedule_transaction($pdo, $action, $body);
     $pdo->commit();
     json_ok($out);
@@ -498,16 +520,16 @@ function ready_for_super_admin(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? 'admin'));
   if ($actor !== 'admin') {
-    throw new RuntimeException('Only Admin can mark a timetable ready for Super Admin.');
+    throw new RuntimeException('Only the Records Officer can mark a timetable ready for the University Registrar.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body);
   $row = approval_row($pdo, $termId);
   if (($row['status'] ?? '') === 'pending_vpaa') {
-    throw new RuntimeException('The VPAA is still reviewing the last Super Admin-approved package. Wait for that decision before sending a new one.');
+    throw new RuntimeException('The VPAA is still reviewing the last package the University Registrar approved. Wait for that decision before sending a new one.');
   }
   $classes = list_scheduled_classes($pdo, $termId);
   if (!$classes) {
-    throw new RuntimeException('Generate a schedule for this term before sending it to Super Admin.');
+    throw new RuntimeException('Generate a schedule for this term before sending it to the University Registrar.');
   }
   $snap = json_encode(schedule_live_snapshot($pdo, $year, $sem, $classes), JSON_UNESCAPED_UNICODE);
   $pdo->prepare(
@@ -526,8 +548,8 @@ function ready_for_super_admin(PDO $pdo, array $body): array
     $pdo,
     ['super_admin'],
     'timetable_send',
-    'Admin sent a timetable for review',
-    'Admin sent the ' . $term . ' timetable to Super Admin.',
+    'Records Officer sent a timetable for review',
+    'Records Officer sent the ' . $term . ' timetable to the University Registrar.',
     'final-report',
     'Timetable'
   );
@@ -538,12 +560,12 @@ function super_admin_decide_package(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? ''));
   if ($actor !== 'super_admin') {
-    throw new RuntimeException('Only Super Admin can approve or send back this package.');
+    throw new RuntimeException('Only the University Registrar can approve or send back this package.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body, false);
   $row = approval_row($pdo, $termId);
   if (($row['status'] ?? '') !== 'pending_super_admin' || trim((string) ($row['pending_sa_json'] ?? '')) === '') {
-    throw new RuntimeException('There is no timetable waiting for Super Admin approval.');
+    throw new RuntimeException('There is no timetable waiting for the University Registrar’s approval.');
   }
   $accept = !empty($body['accept']);
   if ($accept) {
@@ -566,8 +588,8 @@ function super_admin_decide_package(PDO $pdo, array $body): array
       $pdo,
       ['vpaa'],
       'timetable_send',
-      'Super Admin sent a timetable for approval',
-      'Super Admin sent the ' . $term . ' timetable to the VPAA.',
+      'University Registrar sent a timetable for approval',
+      'University Registrar sent the ' . $term . ' timetable to the VPAA.',
       'final-report.html?ws=awaiting',
       'Timetable'
     );
@@ -575,7 +597,7 @@ function super_admin_decide_package(PDO $pdo, array $body): array
   }
   $note = trim((string) ($body['note'] ?? ''));
   if ($note === '') {
-    throw new RuntimeException('Say what the Admin should revise before sending this back.');
+    throw new RuntimeException('Say what the Records Officer should revise before sending this back.');
   }
   $next = trim((string) ($row['published_json'] ?? '')) !== '' ? 'published' : 'draft';
   $pdo->prepare(
@@ -590,7 +612,7 @@ function super_admin_decide_package(PDO $pdo, array $body): array
   )->execute([$next, $note, $termId]);
   record_schedule_handoff($pdo, $termId, 'send_back', 'super_admin', 'admin', $note);
   $term = term_offering_label($year, $sem);
-  $msg = 'Super Admin sent the ' . $term . ' timetable back to Admin.';
+  $msg = 'University Registrar sent the ' . $term . ' timetable back to the Records Officer.';
   $snip = notify_note_snippet($note);
   if ($snip !== '') {
     $msg .= ' ' . $snip;
@@ -599,7 +621,7 @@ function super_admin_decide_package(PDO $pdo, array $body): array
     $pdo,
     ['admin'],
     'timetable_return',
-    'Super Admin sent a timetable back',
+    'University Registrar sent a timetable back',
     $msg,
     'final-report',
     'Timetable'
@@ -611,12 +633,12 @@ function super_admin_send_live(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? ''));
   if ($actor !== 'super_admin') {
-    throw new RuntimeException('Only Super Admin can send the live timetable to the VPAA.');
+    throw new RuntimeException('Only the University Registrar can send the live timetable to the VPAA.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body, true);
   $row = approval_row($pdo, $termId);
   if (($row['status'] ?? '') === 'pending_vpaa') {
-    throw new RuntimeException('The VPAA is still reviewing the last Super Admin-approved package. Wait for that decision before sending a new one.');
+    throw new RuntimeException('The VPAA is still reviewing the last package the University Registrar approved. Wait for that decision before sending a new one.');
   }
   $classes = list_scheduled_classes($pdo, $termId);
   if (!$classes) {
@@ -641,8 +663,8 @@ function super_admin_send_live(PDO $pdo, array $body): array
     $pdo,
     ['vpaa'],
     'timetable_send',
-    'Super Admin sent a timetable for approval',
-    'Super Admin sent the ' . $term . ' live timetable to the VPAA.',
+    'University Registrar sent a timetable for approval',
+    'University Registrar sent the ' . $term . ' live timetable to the VPAA.',
     'final-report.html?ws=awaiting',
     'Timetable'
   );
@@ -698,7 +720,7 @@ function vpaa_decide_package(PDO $pdo, array $body): array
   }
   $note = trim((string) ($body['note'] ?? ''));
   if ($note === '') {
-    throw new RuntimeException('Say what Super Admin should revise before sending this back.');
+    throw new RuntimeException('Say what University Registrar should revise before sending this back.');
   }
   $pdo->prepare(
     "UPDATE term_schedule_approvals
@@ -719,7 +741,7 @@ function vpaa_decide_package(PDO $pdo, array $body): array
   }
   record_schedule_handoff($pdo, $termId, 'send_back', 'vpaa', 'super_admin', $note);
   $term = term_offering_label($year, $sem);
-  $msg = 'The VPAA sent the ' . $term . ' timetable back to Super Admin.';
+  $msg = 'The VPAA sent the ' . $term . ' timetable back to the University Registrar.';
   $snip = notify_note_snippet($note);
   if ($snip !== '') {
     $msg .= ' ' . $snip;
@@ -737,8 +759,8 @@ function vpaa_decide_package(PDO $pdo, array $body): array
     $pdo,
     ['admin'],
     'timetable_return',
-    'VPAA sent a timetable back to Super Admin',
-    $msg . ' Super Admin still has the frozen copy.',
+    'VPAA sent a timetable back to the University Registrar',
+    $msg . ' University Registrar still has the frozen copy.',
     'create-schedule.html?ws=submitted',
     'Timetable'
   );
@@ -1430,17 +1452,15 @@ function partition_chunk_has_section(array $chunk, int $sectionId): bool
   return false;
 }
 
-// Sibling partitions of one section may share a time slot because they hold
-// different students. Everything else about the section still collides, so each
-// partition carries a token and only an identical token is allowed to overlap.
+// Each partition is its own group of students. The token names that group, so
+// group 1 can meet while group 2 is in a different subject. The same group
+// cannot take two classes at once, and a whole-section class blocks every group.
 function partition_lane_token(array $member): string
 {
   if (!partition_member_is_partitioned($member)) {
     return '';
   }
-  return 'p:' . (int) $member['sectionId']
-    . ':' . (string) ($member['courseCode'] ?? '')
-    . ':' . (string) ($member['component'] ?? '');
+  return 'p:' . (int) $member['sectionId'] . ':' . (int) ($member['partitionIndex'] ?? 1);
 }
 
 function partition_lanes_for_group(array $group): array
@@ -1518,6 +1538,12 @@ function take_fitting(array $left, array &$chunk, int $sum, array $rooms, bool $
   return $remain;
 }
 
+/** Only the rooms these colleges may use (Data management → Facilities). */
+function rooms_for_colleges(PDO $pdo, array $rooms, array $collegeIds): array
+{
+  return array_values(array_filter($rooms, static fn ($r) => room_allows_colleges($pdo, (int) $r['room_id'], $collegeIds)));
+}
+
 function smallest_room_for(array $rooms, int $count): ?array
 {
   foreach ($rooms as $r) {
@@ -1537,7 +1563,7 @@ function group_from_members(array $members, PDO $pdo): array
   }
   $room = null;
   if (!empty($first['usesCampusRoom']) && $first['roomTypeId'] && $first['unresolved'] === '') {
-    $room = smallest_room_for(rooms_of_type($pdo, (int) $first['roomTypeId']), $sum);
+    $room = smallest_room_for(rooms_for_colleges($pdo, rooms_of_type($pdo, (int) $first['roomTypeId']), group_college_ids(['members' => $members])), $sum);
     if (!$room && count($members) > 1) {
       // Combined group does not fit any room; caller should have packed to fit.
       // Fall back to placing without a room so the run can finish with a warning.
@@ -1621,7 +1647,7 @@ function assign_rooms_to_groups(PDO $pdo, array $groups): array
     if ($g['unresolved'] !== '' || empty($g['usesCampusRoom']) || !$g['roomTypeId']) {
       continue;
     }
-    $room = smallest_room_for(rooms_of_type($pdo, (int) $g['roomTypeId']), (int) $g['combinedCount']);
+    $room = smallest_room_for(rooms_for_colleges($pdo, rooms_of_type($pdo, (int) $g['roomTypeId']), group_college_ids($g)), (int) $g['combinedCount']);
     if ($room) {
       $g['roomId'] = (int) $room['room_id'];
       $g['roomCode'] = room_row_label($room);
@@ -1853,11 +1879,11 @@ function placement_day_windows(bool $keepLunch): array
   return $keepLunch ? [range(0, 9), range(12, 23)] : [range(0, 23)];
 }
 
-function order_days_by_existing(array $days, array $sectionIds, array $sBusy): array
+function order_days_by_existing(array $days, array $sectionIds, array $sBusy, array $lanes = []): array
 {
   $decorated = [];
   foreach (array_values($days) as $i => $day) {
-    $decorated[] = [day_has_classes($sectionIds, $day, $sBusy) ? 0 : 1, $i, $day];
+    $decorated[] = [day_has_classes($sectionIds, $day, $sBusy, $lanes) ? 0 : 1, $i, $day];
   }
   sort($decorated);
   return array_map(static function ($row) {
@@ -1865,11 +1891,11 @@ function order_days_by_existing(array $days, array $sectionIds, array $sBusy): a
   }, $decorated);
 }
 
-function order_pairs_by_existing(array $pairs, array $sectionIds, array $sBusy): array
+function order_pairs_by_existing(array $pairs, array $sectionIds, array $sBusy, array $lanes = []): array
 {
   $decorated = [];
   foreach (array_values($pairs) as $i => $pair) {
-    $busy = day_has_classes($sectionIds, $pair[0], $sBusy) || day_has_classes($sectionIds, $pair[1], $sBusy);
+    $busy = day_has_classes($sectionIds, $pair[0], $sBusy, $lanes) || day_has_classes($sectionIds, $pair[1], $sBusy, $lanes);
     $decorated[] = [$busy ? 0 : 1, $i, $pair];
   }
   sort($decorated);
@@ -1878,31 +1904,35 @@ function order_pairs_by_existing(array $pairs, array $sectionIds, array $sBusy):
   }, $decorated);
 }
 
-function day_has_classes(array $sectionIds, string $day, array $sBusy): bool
+function day_has_classes(array $sectionIds, string $day, array $sBusy, array $lanes = []): bool
 {
   foreach ($sectionIds as $sid) {
-    if (!empty($sBusy[$sid][$day])) {
-      return true;
+    $lane = $lanes[$sid] ?? true;
+    foreach ($sBusy[$sid][$day] ?? [] as $held) {
+      if (placement_slot_blocks($held, $lane)) {
+        return true;
+      }
     }
   }
   return false;
 }
 
-function sections_day_vacant_ok(array $sectionIds, string $day, array $newIntervals, array $sBusy): bool
+function sections_day_vacant_ok(array $sectionIds, string $day, array $newIntervals, array $sBusy, array $lanes = []): bool
 {
   foreach ($sectionIds as $sid) {
-    if (!vacant_gaps_ok(occupied_slots_for_day((int) $sid, $day, $sBusy, $newIntervals))) {
+    $lane = $lanes[$sid] ?? true;
+    if (!vacant_gaps_ok(occupied_slots_for_day((int) $sid, $day, $sBusy, $newIntervals, $lane))) {
       return false;
     }
   }
   return true;
 }
 
-function occupied_slots_for_day(int $sid, string $day, array $sBusy, array $newIntervals): array
+function occupied_slots_for_day(int $sid, string $day, array $sBusy, array $newIntervals, mixed $lane = true): array
 {
   $slots = [];
-  foreach ($sBusy[$sid][$day] ?? [] as $s => $on) {
-    if ($on) {
+  foreach ($sBusy[$sid][$day] ?? [] as $s => $held) {
+    if (placement_slot_blocks($held, $lane)) {
       $slots[(int) $s] = true;
     }
   }
@@ -1937,9 +1967,6 @@ function vacant_gaps_ok(array $slotSet): bool
   for ($i = 1; $i < count($intervals); $i++) {
     $vacant = 0;
     for ($s = $intervals[$i - 1][1]; $s < $intervals[$i][0]; $s++) {
-      if ($s === 10 || $s === 11) {
-        continue;
-      }
       $vacant++;
     }
     if ($vacant > 4) {
@@ -1949,11 +1976,12 @@ function vacant_gaps_ok(array $slotSet): bool
   return true;
 }
 
-function compactness_score(array $sectionIds, string $day, array $newIntervals, array $sBusy): int
+function compactness_score(array $sectionIds, string $day, array $newIntervals, array $sBusy, array $lanes = []): int
 {
   $total = 0;
   foreach ($sectionIds as $sid) {
-    $total += vacant_total(occupied_slots_for_day((int) $sid, $day, $sBusy, $newIntervals));
+    $lane = $lanes[$sid] ?? true;
+    $total += vacant_total(occupied_slots_for_day((int) $sid, $day, $sBusy, $newIntervals, $lane));
   }
   return $total;
 }
@@ -1967,9 +1995,6 @@ function vacant_total(array $slotSet): int
   sort($keys);
   $vacant = 0;
   for ($s = $keys[0]; $s <= $keys[count($keys) - 1]; $s++) {
-    if ($s === 10 || $s === 11) {
-      continue;
-    }
     if (empty($slotSet[$s])) {
       $vacant++;
     }
@@ -1999,6 +2024,51 @@ function time_to_slot(string $time): int
   return (int) ((($h * 60 + $m) - 7 * 60) / 30);
 }
 
+function placement_hold_tokens(mixed $held): array
+{
+  if ($held === null || $held === false || $held === '' || $held === []) {
+    return [];
+  }
+  if (is_array($held)) {
+    return array_values($held);
+  }
+  return [$held];
+}
+
+function placement_same_students(mixed $heldToken, mixed $lane): bool
+{
+  if ($heldToken === true || $lane === true || $lane === '' || $lane === null) {
+    return true;
+  }
+  return (string) $heldToken === (string) $lane;
+}
+
+function placement_slot_blocks(mixed $held, mixed $lane): bool
+{
+  foreach (placement_hold_tokens($held) as $token) {
+    if (placement_same_students($token, $lane)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function placement_remember_hold(array &$sectionBusy, int $sid, string $day, int $slot, mixed $lane): void
+{
+  if ($lane === '' || $lane === null) {
+    $lane = true;
+  }
+  $existing = placement_hold_tokens($sectionBusy[$sid][$day][$slot] ?? null);
+  foreach ($existing as $token) {
+    if ($token === $lane) {
+      $sectionBusy[$sid][$day][$slot] = $existing;
+      return;
+    }
+  }
+  $existing[] = $lane;
+  $sectionBusy[$sid][$day][$slot] = $existing;
+}
+
 function seed_busy_from_private_classes(array $classes, array &$sectionBusy, array &$roomBusy): void
 {
   foreach ($classes as $c) {
@@ -2011,7 +2081,7 @@ function seed_busy_from_private_classes(array $classes, array &$sectionBusy, arr
     }
     $lane = true;
     if ((int) ($c['partitionCount'] ?? 1) > 1) {
-      $lane = 'p:' . $sid . ':' . (string) ($c['courseCode'] ?? '') . ':' . (string) ($c['component'] ?? '');
+      $lane = 'p:' . $sid . ':' . (int) ($c['partitionIndex'] ?? 1);
     }
     foreach ($c['meetings'] as $m) {
       if (!is_array($m)) {
@@ -2028,13 +2098,157 @@ function seed_busy_from_private_classes(array $classes, array &$sectionBusy, arr
       }
       $rid = parse_id((string) ($m['roomId'] ?? ''), 'r');
       for ($s = $start; $s < $end; $s++) {
-        $sectionBusy[$sid][$day][$s] = $lane;
+        placement_remember_hold($sectionBusy, $sid, $day, $s, $lane);
         if ($rid) {
           $roomBusy[$rid][$day][$s] = true;
         }
       }
     }
   }
+}
+
+/** True when this class is one meeting: its hours are within the component's split. */
+function group_is_one_meeting(array $group, array $settings): bool
+{
+  if (($group['unresolved'] ?? '') !== '' || (float) ($group['hours'] ?? 0) <= 0) {
+    return false;
+  }
+  $component = (string) ($group['component'] ?? '');
+  if ($component !== 'lecture' && $component !== 'laboratory') {
+    return false;
+  }
+  $split = split_hours_for_component($settings, $component);
+  return (float) $group['hours'] <= $split + 0.0001;
+}
+
+/**
+ * Lecture and lab of one subject pair only when they cover the same sections.
+ * A merged class pairs with the other part only when that part has the same sections.
+ */
+function group_one_meeting_partner_key(array $group): string
+{
+  $code = strtoupper(trim((string) ($group['courseCode'] ?? '')));
+  if ($code === '') {
+    return '';
+  }
+  $parts = [];
+  foreach ($group['members'] ?? [] as $member) {
+    if (!is_array($member)) {
+      continue;
+    }
+    $parts[] = (int) ($member['sectionId'] ?? 0)
+      . ':' . (int) ($member['partitionIndex'] ?? 1)
+      . ':' . (int) ($member['partitionCount'] ?? 1);
+  }
+  if ($parts === []) {
+    return '';
+  }
+  sort($parts, SORT_STRING);
+  return $code . '|' . implode(',', $parts);
+}
+
+function group_section_ids(array $group): array
+{
+  $ids = [];
+  foreach ($group['members'] ?? [] as $member) {
+    if (!is_array($member)) {
+      continue;
+    }
+    $ids[(int) ($member['sectionId'] ?? 0)] = true;
+  }
+  unset($ids[0]);
+  return array_keys($ids);
+}
+
+function remember_group_placement(array &$group, array $meetings, ?int $roomId, array $roomsByType): void
+{
+  $group['meetings'] = $meetings;
+  $group['unresolved'] = '';
+  if ($roomId && (int) ($group['roomId'] ?? 0) !== $roomId) {
+    $group['roomId'] = $roomId;
+    $meta = placement_room_meta($roomsByType, $roomId);
+    if ($meta) {
+      $group['roomCode'] = $meta['label'];
+      $group['roomCapacity'] = $meta['capacity'];
+    }
+  }
+}
+
+/**
+ * Put a one-meeting lecture and a one-meeting lab on Mon/Wed, Tue/Thu, or Fri/Sat.
+ * The clocks can differ. Returns false when no pair is open; the caller then places each day on its own.
+ */
+function place_one_meeting_day_pair(
+  array &$lecture,
+  array &$lab,
+  array &$sectionBusy,
+  array &$roomBusy,
+  array $settings,
+  array $roomsByType
+): bool {
+  $lectureSlots = (int) round((float) $lecture['hours'] * 2);
+  $labSlots = (int) round((float) $lab['hours'] * 2);
+  if ($lectureSlots < 1 || $labSlots < 1) {
+    return false;
+  }
+  $lectureRooms = placement_room_choices($lecture, $roomsByType);
+  $labRooms = placement_room_choices($lab, $roomsByType);
+  if ($lectureRooms === [] || $labRooms === []) {
+    return false;
+  }
+  $lectureIds = group_section_ids($lecture);
+  $labIds = group_section_ids($lab);
+  $lectureLanes = partition_lanes_for_group($lecture);
+  $labLanes = partition_lanes_for_group($lab);
+  $keepLunch = !empty($settings['keepLunch']);
+  $sectionIds = array_values(array_unique(array_merge($lectureIds, $labIds)));
+  $pairs = order_pairs_by_existing(
+    [['Mon', 'Wed'], ['Tue', 'Thu'], ['Fri', 'Sat']],
+    $sectionIds,
+    $sectionBusy,
+    $lectureLanes + $labLanes
+  );
+  $dayPlans = $labSlots >= $lectureSlots ? [[1, 0], [0, 1]] : [[0, 1], [1, 0]];
+  foreach ($pairs as $pair) {
+    foreach ($dayPlans as [$lectureDay, $labDay]) {
+      foreach ($lectureRooms as $lectureRoom) {
+        $lectureMeetings = try_day_blocks(
+          $lectureSlots,
+          $pair[$lectureDay],
+          $lectureIds,
+          $lectureRoom,
+          $sectionBusy,
+          $roomBusy,
+          $keepLunch,
+          $lectureLanes
+        );
+        if (!$lectureMeetings) {
+          continue;
+        }
+        foreach ($labRooms as $labRoom) {
+          $labMeetings = try_day_blocks(
+            $labSlots,
+            $pair[$labDay],
+            $labIds,
+            $labRoom,
+            $sectionBusy,
+            $roomBusy,
+            $keepLunch,
+            $labLanes
+          );
+          if (!$labMeetings) {
+            continue;
+          }
+          occupy($lectureMeetings, $lectureIds, $lectureRoom, $sectionBusy, $roomBusy, $lectureLanes);
+          occupy($labMeetings, $labIds, $labRoom, $sectionBusy, $roomBusy, $labLanes);
+          remember_group_placement($lecture, $lectureMeetings, $lectureRoom, $roomsByType);
+          remember_group_placement($lab, $labMeetings, $labRoom, $roomsByType);
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 function place_groups_in_memory(PDO $pdo, array $groups, array $settings = [], array $seedClasses = []): array
@@ -2059,7 +2273,14 @@ function place_groups_in_memory(PDO $pdo, array $groups, array $settings = [], a
   if ($seedClasses) {
     seed_busy_from_private_classes($seedClasses, $sectionBusy, $roomBusy);
   }
-  foreach ($groups as &$g) {
+  // A one-meeting lecture and a one-meeting lab of the same subject share a day pair
+  // when one is free. A class that already meets twice stays on its own rule.
+  $paired = [];
+  $pairDeclined = [];
+  foreach ($groups as $idx => &$g) {
+    if (isset($paired[$idx])) {
+      continue;
+    }
     $g['meetings'] = [];
     if ($g['unresolved'] !== '' || $g['hours'] <= 0) {
       continue;
@@ -2068,6 +2289,42 @@ function place_groups_in_memory(PDO $pdo, array $groups, array $settings = [], a
     if ($needRoom && !$g['roomId']) {
       $g['unresolved'] = 'No room large enough for ' . $g['combinedCount'] . ' students.';
       continue;
+    }
+    $partnerKey = group_one_meeting_partner_key($g);
+    if ($partnerKey !== '' && group_is_one_meeting($g, $settings) && !isset($pairDeclined[$partnerKey])) {
+      $partnerAt = null;
+      $groupCount = count($groups);
+      for ($otherIdx = $idx + 1; $otherIdx < $groupCount; $otherIdx++) {
+        $other = $groups[$otherIdx];
+        if (isset($paired[$otherIdx]) || !group_is_one_meeting($other, $settings)) {
+          continue;
+        }
+        if ((string) ($other['component'] ?? '') === (string) ($g['component'] ?? '')) {
+          continue;
+        }
+        if (group_one_meeting_partner_key($other) !== $partnerKey) {
+          continue;
+        }
+        $partnerAt = $otherIdx;
+        break;
+      }
+      if ($partnerAt !== null) {
+        $lectureAt = (string) ($g['component'] ?? '') === 'lecture' ? $idx : $partnerAt;
+        $labAt = $lectureAt === $idx ? $partnerAt : $idx;
+        if (place_one_meeting_day_pair(
+          $groups[$lectureAt],
+          $groups[$labAt],
+          $sectionBusy,
+          $roomBusy,
+          $settings,
+          $roomsByType
+        )) {
+          $paired[$idx] = true;
+          $paired[$partnerAt] = true;
+          continue;
+        }
+        $pairDeclined[$partnerKey] = true;
+      }
     }
     $memberIds = array_map(static function ($m) {
       return (int) $m['sectionId'];
@@ -2084,7 +2341,8 @@ function place_groups_in_memory(PDO $pdo, array $groups, array $settings = [], a
         $sectionBusy,
         $roomBusy,
         $settings,
-        $lanes
+        $lanes,
+        (string) ($g['component'] ?? 'lecture')
       );
       if ($meetings) {
         $chosenRoom = $roomId;
@@ -2116,10 +2374,11 @@ function find_placement(
   array &$sectionBusy,
   array &$roomBusy,
   array $settings = [],
-  array $lanes = []
+  array $lanes = [],
+  string $component = 'lecture'
 ): ?array {
   $settings = normalize_generator_settings($settings);
-  $splitHours = (float) $settings['splitHours'];
+  $splitHours = split_hours_for_component($settings, $component);
   $keepLunch = !empty($settings['keepLunch']);
   $slotsWeek = (int) round($hours * 2);
   if ($slotsWeek < 1) {
@@ -2130,7 +2389,7 @@ function find_placement(
     ['Tue', 'Thu'],
     ['Fri', 'Sat'],
   ];
-  $single = order_days_by_existing(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], $sectionIds, $sectionBusy);
+  $single = order_days_by_existing(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], $sectionIds, $sectionBusy, $lanes);
   if ($hours <= $splitHours + 0.0001) {
     foreach ($single as $day) {
       $blocks = try_day_blocks(
@@ -2152,7 +2411,7 @@ function find_placement(
   }
   $perDay = (int) ceil($slotsWeek / 2);
   $other = $slotsWeek - $perDay;
-  foreach (order_pairs_by_existing($pairs, $sectionIds, $sectionBusy) as $pair) {
+  foreach (order_pairs_by_existing($pairs, $sectionIds, $sectionBusy, $lanes) as $pair) {
     $blocks = try_pair_same_clock(
       $perDay,
       $other > 0 ? $other : $perDay,
@@ -2292,7 +2551,7 @@ function fit_contiguous(
     if (!slot_open_and_compact($start, $slots, $day, $sectionIds, $roomId, $sBusy, $rBusy, [], $lanes)) {
       continue;
     }
-    $score = compactness_score($sectionIds, $day, [[$start, $start + $slots]], $sBusy);
+    $score = compactness_score($sectionIds, $day, [[$start, $start + $slots]], $sBusy, $lanes);
     if ($score < $bestScore || ($score === $bestScore && ($best === null || $start < $best))) {
       $best = $start;
       $bestScore = $score;
@@ -2316,8 +2575,8 @@ function range_free(
       return false;
     }
     foreach ($sectionIds as $sid) {
-      $held = $sBusy[$sid][$day][$s] ?? null;
-      if (!empty($held) && $held !== ($lanes[$sid] ?? '')) {
+      $lane = $lanes[$sid] ?? true;
+      if (placement_slot_blocks($sBusy[$sid][$day][$s] ?? null, $lane)) {
         return false;
       }
     }
@@ -2344,7 +2603,7 @@ function slot_open_and_compact(
   }
   $intervals = $extraIntervals;
   $intervals[] = [$start, $start + $len];
-  return sections_day_vacant_ok($sectionIds, $day, $intervals, $sBusy);
+  return sections_day_vacant_ok($sectionIds, $day, $intervals, $sBusy, $lanes);
 }
 
 function occupy(
@@ -2360,7 +2619,7 @@ function occupy(
     $end = time_to_slot($b['end']);
     for ($s = $start; $s < $end; $s++) {
       foreach ($sectionIds as $sid) {
-        $sBusy[$sid][$b['day']][$s] = $lanes[$sid] ?? true;
+        placement_remember_hold($sBusy, (int) $sid, $b['day'], $s, $lanes[$sid] ?? true);
       }
       if ($roomId) {
         $rBusy[$roomId][$b['day']][$s] = true;
@@ -2382,11 +2641,26 @@ function placement_rooms_by_type(PDO $pdo): array
           WHERE r.status = 'active' AND r.capacity > 0
             AND (b.building_id IS NULL OR b.is_active = 1)
           ORDER BY r.capacity ASC, b.building_name, r.room_code";
+  $allowed = room_allowed_colleges($pdo);
   foreach ($pdo->query($sql) as $row) {
     $tid = (int) ($row['room_type_id'] ?? 0);
+    $row['colleges'] = $allowed[(int) $row['room_id']] ?? null;
     $out[$tid][] = $row;
   }
   return $out;
+}
+
+function placement_room_open_to(array $row, array $collegeIds): bool
+{
+  if (!is_array($row['colleges'] ?? null)) {
+    return true;
+  }
+  foreach ($collegeIds as $c) {
+    if (!in_array((int) $c, $row['colleges'], true)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function placement_room_choices(array $g, array $roomsByType): array
@@ -2396,13 +2670,18 @@ function placement_room_choices(array $g, array $roomsByType): array
   }
   $typeId = (int) ($g['roomTypeId'] ?? 0);
   $need = (int) ($g['combinedCount'] ?? 0);
+  $colleges = group_college_ids($g);
   $ids = [];
   $assigned = (int) ($g['roomId'] ?? 0);
   if ($assigned) {
-    $ids[] = $assigned;
+    foreach ($roomsByType[$typeId] ?? [] as $row) {
+      if ((int) $row['room_id'] === $assigned && placement_room_open_to($row, $colleges)) {
+        $ids[] = $assigned;
+      }
+    }
   }
   foreach ($roomsByType[$typeId] ?? [] as $row) {
-    if ((int) $row['capacity'] < $need) {
+    if ((int) $row['capacity'] < $need || !placement_room_open_to($row, $colleges)) {
       continue;
     }
     $rid = (int) $row['room_id'];
@@ -2628,6 +2907,7 @@ function list_campus_rooms(PDO $pdo): array
           LEFT JOIN buildings b ON b.building_id = fl.building_id
           ORDER BY COALESCE(b.building_name, b.building_code, ''), r.room_code";
   $out = [];
+  $allowed = room_allowed_colleges($pdo);
   foreach ($pdo->query($sql) as $row) {
     $buildingActive = $row['building_id'] ? ((int) ($row['is_active'] ?? 1) === 1) : true;
     $out[] = [
@@ -2645,6 +2925,8 @@ function list_campus_rooms(PDO $pdo): array
       'floorNumber' => $row['floor_number'] !== null && $row['floor_number'] !== '' ? (int) $row['floor_number'] : null,
       'buildingId' => $row['building_id'] ? public_id('b', (int) $row['building_id']) : 'b-none',
       'buildingName' => trim((string) ($row['building_name'] ?: $row['building_code'] ?: 'Unassigned')),
+      // empty = any college; otherwise only these colleges' classes go here automatically
+      'colleges' => array_map(static fn ($c) => public_id('c', (int) $c), $allowed[(int) $row['room_id']] ?? []),
     ];
   }
   return $out;
@@ -3475,7 +3757,7 @@ function log_schedule_transaction(PDO $pdo, string $action, array $body): void
   }
   $noteBit = $note !== '' ? ' Note: ' . $note : '';
   if (in_array($action, ['submit_to_super_admin', 'ready_for_super_admin'], true)) {
-    record_transaction($pdo, 'Submit', 'schedule', 'Submitted the ' . $term . ' timetable to Super Admin.');
+    record_transaction($pdo, 'Submit', 'schedule', 'Submitted the ' . $term . ' timetable to the University Registrar.');
     return;
   }
   if (in_array($action, ['submit_to_vpaa', 'super_admin_send_live'], true)) {
@@ -3483,10 +3765,10 @@ function log_schedule_transaction(PDO $pdo, string $action, array $body): void
     return;
   }
   if ($action === 'reject_admin_submission' || ($action === 'super_admin_decide' && empty($body['accept']))) {
-    record_transaction($pdo, 'Reject', 'schedule', 'Sent the ' . $term . ' timetable back to Admin.' . $noteBit);
+    record_transaction($pdo, 'Reject', 'schedule', 'Sent the ' . $term . ' timetable back to the Records Officer.' . $noteBit);
     return;
   }
   if ($action === 'vpaa_decide' && empty($body['accept'])) {
-    record_transaction($pdo, 'Reject', 'schedule', 'Sent the ' . $term . ' timetable back to Super Admin.' . $noteBit);
+    record_transaction($pdo, 'Reject', 'schedule', 'Sent the ' . $term . ' timetable back to the University Registrar.' . $noteBit);
   }
 }

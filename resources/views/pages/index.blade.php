@@ -5,9 +5,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MCU-NEX | Log in</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+@endverbatim
+  @fonts
+@verbatim
   <style>
     :root {
       --purple: #5c267e;
@@ -246,23 +246,6 @@
       margin-top: 1.25rem;
     }
 
-    .modal-actions .btn-secondary {
-      flex: 1;
-      min-width: 6rem;
-      padding: 0.65rem 1rem;
-      border: 2px solid #e8e0ed;
-      border-radius: 8px;
-      background: var(--white);
-      color: var(--purple);
-      font-family: inherit;
-      font-weight: 600;
-      font-size: 0.9rem;
-      cursor: pointer;
-    }
-
-    .modal-actions .btn-secondary:hover {
-      background: #faf8fc;
-    }
 
     .modal-actions .btn-primary {
       flex: 1;
@@ -302,40 +285,52 @@
       color: var(--purple);
     }
 
-    .forgot-step[hidden] {
-      display: none !important;
+    .password-wrap {
+      position: relative;
     }
 
-    .modal-code-feedback {
-      font-size: 0.85rem;
-      color: #2d6a4f;
-      margin: 0 0 0.75rem;
-      line-height: 1.35;
+    .password-wrap input {
+      padding-right: 3rem;
     }
 
-    .modal-code-feedback[hidden] {
-      display: none !important;
+    /* Edge adds its own reveal eye to password fields; hide it so only ours shows. */
+    .password-wrap input::-ms-reveal,
+    .password-wrap input::-ms-clear {
+      display: none;
     }
 
-    .forgot-temp-btn {
-      width: 100%;
-      margin-top: 1rem;
-      padding: 0.5rem 0.75rem;
-      border: 1px dashed #c4b8d4;
-      border-radius: 8px;
-      background: #faf8fc;
+    .password-toggle {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 3rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      background: none;
       color: #7a6992;
-      font-family: inherit;
-      font-size: 0.75rem;
-      font-weight: 500;
       cursor: pointer;
-      line-height: 1.35;
+      border-radius: 0 8px 8px 0;
     }
 
-    .forgot-temp-btn:hover {
-      background: #f3edf8;
+    .password-toggle:hover {
       color: var(--purple);
-      border-color: var(--purple);
+    }
+
+    .password-toggle:focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: -4px;
+    }
+
+    .password-toggle svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .password-toggle svg[hidden] {
+      display: none;
     }
   </style>
 </head>
@@ -347,7 +342,7 @@
       </div>
       <div>
         <div class="brand-text-main">MCU-NEX</div>
-        <div class="brand-text-sub">Registrar Allocation System</div>
+        <div class="brand-text-sub">Registrar Room Allocation</div>
       </div>
     </div>
     <h1>Log in</h1>
@@ -359,7 +354,13 @@
       </div>
       <div class="field">
         <label for="password">Password</label>
-        <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+        <div class="password-wrap">
+          <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+          <button type="button" class="password-toggle" id="password-toggle" aria-label="Show password" aria-pressed="false" aria-controls="password">
+            <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+            <svg class="icon-eye-off" hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-2.2 3.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18" /></svg>
+          </button>
+        </div>
       </div>
       <div class="forgot">
         <button type="button" id="forgot-open">Forgot password?</button>
@@ -369,56 +370,20 @@
   </div>
 
   <div id="forgot-modal" class="modal-overlay" aria-hidden="true">
-    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="forgot-title">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="forgot-title" aria-describedby="forgot-desc">
       <button type="button" class="modal-close" id="forgot-close" aria-label="Close">&times;</button>
-      <h2 id="forgot-title">Reset password</h2>
-
-      <div id="forgot-step-email" class="forgot-step">
-        <p class="modal-hint">Enter the email for your account. We’ll send a verification code to that address.</p>
-        <div class="field">
-          <label for="forgot-email">Email</label>
-          <input type="email" id="forgot-email" autocomplete="email" placeholder="you@example.com">
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn-secondary" id="forgot-cancel">Cancel</button>
-          <button type="button" class="btn-primary" id="forgot-continue">Continue</button>
-        </div>
-      </div>
-
-      <div id="forgot-step-code" class="forgot-step" hidden>
-        <p class="modal-hint">We sent a verification code to <strong id="forgot-code-email-display"></strong>. Enter the code from your email.</p>
-        <div class="field">
-          <label for="forgot-verification-code">Verification code</label>
-          <input type="text" id="forgot-verification-code" maxlength="8" autocomplete="one-time-code" inputmode="numeric" placeholder="000000">
-        </div>
-        <p id="forgot-code-feedback" class="modal-code-feedback" hidden></p>
-        <div class="modal-actions">
-          <button type="button" class="btn-secondary" id="forgot-back-from-code">Back</button>
-          <button type="button" class="btn-primary" id="forgot-verify-code">Verify code</button>
-        </div>
-        <button type="button" class="forgot-temp-btn" id="forgot-temp-password">Temporary: open change password screen</button>
-      </div>
-
-      <div id="forgot-step-password" class="forgot-step" hidden>
-        <p class="modal-hint">Set a new password for <strong id="forgot-email-display"></strong>.</p>
-        <div class="field">
-          <label for="forgot-new-password">New password</label>
-          <input type="password" id="forgot-new-password" autocomplete="new-password" placeholder="••••••••">
-        </div>
-        <div class="field">
-          <label for="forgot-confirm-password">Confirm password</label>
-          <input type="password" id="forgot-confirm-password" autocomplete="new-password" placeholder="••••••••">
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn-secondary" id="forgot-back">Back</button>
-          <button type="button" class="btn-primary" id="forgot-save">Save password</button>
-        </div>
+      <h2 id="forgot-title">Forgot your password?</h2>
+      <p class="modal-hint" id="forgot-desc">Passwords can’t be reset by email yet. Ask the University Registrar to set a new password for you in Account management, then log in with it.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn-primary" id="forgot-ok">OK</button>
       </div>
     </div>
   </div>
 
-  <script src="js/api-client.js"></script>
-  <script src="js/session-boot.js"></script>
+@endverbatim
+  <x-legacy-js name="api-client" />
+  <x-legacy-js name="session-boot" />
+@verbatim
   <script>
     (function () {
       function normalizeEmail(s) {
@@ -460,45 +425,39 @@
           });
       });
 
-      var modal = document.getElementById('forgot-modal');
-      var stepEmail = document.getElementById('forgot-step-email');
-      var stepCode = document.getElementById('forgot-step-code');
-      var stepPassword = document.getElementById('forgot-step-password');
-      var forgotTitle = document.getElementById('forgot-title');
-      var forgotEmailInput = document.getElementById('forgot-email');
-      var pendingEmail = '';
+      // Show / hide password.
+      var password = document.getElementById('password');
+      var toggle = document.getElementById('password-toggle');
+      toggle.addEventListener('click', function () {
+        var show = password.type === 'password';
+        password.type = show ? 'text' : 'password';
+        toggle.setAttribute('aria-pressed', show ? 'true' : 'false');
+        toggle.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+        // SVG elements have no .hidden property, so toggle the attribute.
+        toggle.querySelector('.icon-eye').toggleAttribute('hidden', show);
+        toggle.querySelector('.icon-eye-off').toggleAttribute('hidden', !show);
+        password.focus();
+      });
 
-      function showForgotStep(which) {
-        stepEmail.hidden = which !== 'email';
-        stepCode.hidden = which !== 'code';
-        stepPassword.hidden = which !== 'password';
-        if (which === 'email') forgotTitle.textContent = 'Reset password';
-        else if (which === 'code') forgotTitle.textContent = 'Enter verification code';
-        else forgotTitle.textContent = 'Set new password';
-      }
+      // Email reset isn't built, so the dialog only explains who can reset it.
+      var modal = document.getElementById('forgot-modal');
+      var forgotOpen = document.getElementById('forgot-open');
 
       function openForgot() {
-        forgotEmailInput.value = document.getElementById('email').value || '';
-        var codeFb = document.getElementById('forgot-code-feedback');
-        codeFb.hidden = true;
-        codeFb.textContent = '';
-        document.getElementById('forgot-verification-code').value = '';
-        showForgotStep('email');
         modal.classList.add('is-open');
         modal.setAttribute('aria-hidden', 'false');
-        setTimeout(function () { forgotEmailInput.focus(); }, 50);
+        setTimeout(function () { document.getElementById('forgot-ok').focus(); }, 50);
       }
 
       function closeForgot() {
         modal.classList.remove('is-open');
         modal.setAttribute('aria-hidden', 'true');
-        pendingEmail = '';
-        showForgotStep('email');
+        forgotOpen.focus();
       }
 
-      document.getElementById('forgot-open').addEventListener('click', openForgot);
+      forgotOpen.addEventListener('click', openForgot);
       document.getElementById('forgot-close').addEventListener('click', closeForgot);
-      document.getElementById('forgot-cancel').addEventListener('click', closeForgot);
+      document.getElementById('forgot-ok').addEventListener('click', closeForgot);
 
       modal.addEventListener('click', function (e) {
         if (e.target === modal) closeForgot();
@@ -506,70 +465,6 @@
 
       document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && modal.classList.contains('is-open')) closeForgot();
-      });
-
-      document.getElementById('forgot-continue').addEventListener('click', function () {
-        var email = normalizeEmail(forgotEmailInput.value);
-        if (!email) {
-          alert('Please enter your email.');
-          return;
-        }
-        if (!window.McuApi) {
-          alert('Open this page through PHP so the account list can be checked.');
-          return;
-        }
-        window.McuApi.send('POST', 'auth.php', { action: 'lookup', email: email })
-          .then(function (res) {
-            if (!res.found) {
-              alert('No active account uses that email.');
-              return;
-            }
-            pendingEmail = email;
-            document.getElementById('forgot-code-email-display').textContent = email;
-            var codeFb = document.getElementById('forgot-code-feedback');
-            codeFb.hidden = true;
-            codeFb.textContent = '';
-            document.getElementById('forgot-verification-code').value = '';
-            showForgotStep('code');
-            setTimeout(function () { document.getElementById('forgot-verification-code').focus(); }, 50);
-          })
-          .catch(function (err) {
-            alert(err.message || 'Could not look up that email.');
-          });
-      });
-
-      document.getElementById('forgot-back-from-code').addEventListener('click', function () {
-        showForgotStep('email');
-      });
-
-      document.getElementById('forgot-verify-code').addEventListener('click', function () {
-        var raw = (document.getElementById('forgot-verification-code').value || '').trim().replace(/\s/g, '');
-        if (!/^\d{6}$/.test(raw)) {
-          alert('Enter the 6-digit code sent to your email.');
-          return;
-        }
-        var fb = document.getElementById('forgot-code-feedback');
-        fb.textContent = 'Email reset is not wired yet. Ask Super Admin to change the password in Account management.';
-        fb.hidden = false;
-      });
-
-      document.getElementById('forgot-temp-password').addEventListener('click', function () {
-        if (!pendingEmail) return;
-        document.getElementById('forgot-email-display').textContent = pendingEmail;
-        document.getElementById('forgot-new-password').value = '';
-        document.getElementById('forgot-confirm-password').value = '';
-        document.getElementById('forgot-code-feedback').hidden = true;
-        showForgotStep('password');
-        setTimeout(function () { document.getElementById('forgot-new-password').focus(); }, 50);
-      });
-
-      document.getElementById('forgot-back').addEventListener('click', function () {
-        document.getElementById('forgot-code-feedback').hidden = true;
-        showForgotStep('code');
-      });
-
-      document.getElementById('forgot-save').addEventListener('click', function () {
-        alert('Password reset by email is not wired yet. Ask Super Admin to change the password in Account management.');
       });
     })();
   </script>

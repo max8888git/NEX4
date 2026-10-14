@@ -3,7 +3,143 @@
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 
+/*
+ * Design tokens — the single source of truth for the UI.
+ *
+ * These replace the `:root` blocks that were copy-pasted into every page's
+ * inline <style>. Page families migrating to Tailwind reference these tokens;
+ * legacy pages keep their own copies until they are converted.
+ */
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    /* Type — DM Sans, self-hosted through vite.config.js (bunny fonts). */
+    --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+
+    /* Brand palette (extracted from the existing login page :root). */
+    --color-brand-50: #f7f2fa;
+    --color-brand-100: #f3edf8;
+    --color-brand-200: #e8e0ed;
+    --color-brand-300: #d4c4e0;
+    --color-brand-400: #a98cbf;
+    --color-brand-500: #7a6992;
+    --color-brand-600: #5c267e; /* primary purple */
+    --color-brand-700: #4a1f66;
+    --color-brand-800: #3a1851;
+    --color-brand-900: #2a1139;
+
+    --color-gold-300: #fcd97a;
+    --color-gold-400: #f9b937; /* accent gold */
+    --color-gold-500: #e5a82a;
+    --color-gold-600: #c78f1f;
+
+    /* Semantic feedback colors. */
+    --color-danger-50: #fef2f2;
+    --color-danger-600: #991b1b;
+    --color-success-600: #166534;
+    --color-warning-100: #fef9c3;
+    --color-warning-700: #854d0e;
+
+    /* Surfaces & lines. */
+    --color-surface: #ffffff;
+    --color-surface-muted: #faf8fc;
+    --color-line: #e8e0ed;
+    --color-ink: #241333; /* default body text, softer than black */
+    --color-ink-muted: #7a6992;
+
+    /* Shape. */
+    --radius-card: 12px;
+    --radius-control: 8px;
+
+    /* Shadows (login card / modal scale). */
+    --shadow-card: 0 20px 60px rgb(0 0 0 / 0.25);
+    --shadow-pop: 0 20px 60px rgb(0 0 0 / 0.3);
+    --shadow-dropdown: 0 8px 24px rgb(42 17 57 / 0.16);
+}
+
+/* Component primitives shared by every page family.
+ * Registered through Tailwind v4's @layer so utilities can always override. */
+@layer components {
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        border-radius: var(--radius-control);
+        font-family: var(--font-sans);
+        font-weight: 600;
+        line-height: 1.25;
+        padding: 0.65rem 1.25rem;
+        cursor: pointer;
+        transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.05s ease,
+            opacity 0.15s ease;
+    }
+    .btn:focus-visible {
+        outline: 2px solid var(--color-brand-600);
+        outline-offset: 2px;
+    }
+    .btn:disabled {
+        opacity: 0.65;
+        cursor: wait;
+    }
+    .btn:active {
+        transform: scale(0.99);
+    }
+
+    /* Primary action: gold fill on purple text (existing brand CTA). */
+    .btn-primary {
+        background: var(--color-gold-400);
+        color: var(--color-brand-600);
+    }
+    .btn-primary:hover:not(:disabled) {
+        background: var(--color-gold-500);
+    }
+
+    /* Secondary action: outline that fills lightly on hover. */
+    .btn-secondary {
+        background: var(--color-surface);
+        color: var(--color-brand-600);
+        border: 2px solid var(--color-brand-200);
+    }
+    .btn-secondary:hover:not(:disabled) {
+        background: var(--color-brand-50);
+        border-color: var(--color-brand-300);
+    }
+
+    .card {
+        background: var(--color-surface);
+        border: 1px solid var(--color-line);
+        border-radius: var(--radius-card);
+        box-shadow: 0 1px 3px rgb(42 17 57 / 0.06);
+    }
+
+    /* Form field: label + input with visible focus ring. */
+    .field-input {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 2px solid var(--color-brand-200);
+        border-radius: var(--radius-control);
+        background: var(--color-surface);
+        color: var(--color-brand-600);
+        font-family: var(--font-sans);
+        font-size: 1rem;
+        transition: border-color 0.15s ease;
+    }
+    .field-input::placeholder {
+        color: var(--color-brand-400);
+    }
+    .field-input:focus {
+        outline: none;
+        border-color: var(--color-gold-400);
+        box-shadow: 0 0 0 3px rgb(249 185 55 / 0.25);
+    }
+
+    /* Inline alert (replaces alert() dialogs and the page-local .login-error). */
+    .alert-error {
+        padding: 0.55rem 0.75rem;
+        border-radius: 0.55rem;
+        background: var(--color-danger-50);
+        color: var(--color-danger-600);
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
 }

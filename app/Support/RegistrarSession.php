@@ -130,14 +130,15 @@ class RegistrarSession
             'programIds' => $programIds,
             'programNames' => $programNames,
             'home' => self::home($role),
+            'photoUrl' => ProfilePhoto::url((int) $row->user_id),
         ];
     }
 
     public static function roleLabel(string $role): string
     {
         return [
-            'super_admin' => 'Super Admin',
-            'admin' => 'Admin',
+            'super_admin' => 'University Registrar',
+            'admin' => 'Records Officer',
             'vpaa' => 'VPAA',
             'dean' => 'Dean',
             'program_chair' => 'Program Chair',

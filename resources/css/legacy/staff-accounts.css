@@ -1,0 +1,320 @@
+/* Account management (Admin / Super Admin); building blocks come from ui.css. */
+
+.am-page {
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+.am-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.am-toolbar .ui-tabs {
+    margin-right: auto;
+}
+
+.am-toolbar .ui-search {
+    flex: 0 1 280px;
+    min-width: 200px;
+}
+
+.am-toolbar select.ui-input {
+    width: auto;
+    min-width: 150px;
+}
+
+.am-list {
+    background: #fff;
+    border: 1px solid var(--ui-line);
+    border-radius: 1rem;
+    overflow: hidden;
+}
+
+.am-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.am-table th {
+    padding: 0.75rem 1rem;
+    background: #faf8fd;
+    border-bottom: 1px solid var(--ui-line);
+    color: var(--ui-muted);
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-align: left;
+    text-transform: uppercase;
+}
+
+.am-table td {
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid #f0eaf6;
+    vertical-align: middle;
+}
+
+.am-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.am-table tbody tr:hover {
+    background: #fcfaff;
+}
+
+.am-person {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.am-avatar {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--ui-purple-soft);
+    color: var(--ui-purple);
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.am-name {
+    display: block;
+    font-weight: 700;
+    color: var(--ui-text);
+}
+
+.am-email {
+    display: block;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.82rem;
+    color: var(--ui-muted);
+}
+
+.am-person > span:last-child {
+    min-width: 0;
+}
+
+.am-table .ui-tag {
+    white-space: nowrap;
+}
+
+.am-scope {
+    color: #4b3d5e;
+}
+
+.am-none {
+    color: #a596b8;
+}
+
+.am-actions {
+    text-align: right;
+    width: 1%;
+    white-space: nowrap;
+}
+
+.am-edit {
+    min-height: 34px;
+    padding: 0.3rem 0.85rem;
+}
+
+/* Form */
+.am-form {
+    display: grid;
+    gap: 1rem;
+}
+
+.am-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.am-pw {
+    position: relative;
+}
+
+.am-pw .ui-input {
+    padding-right: 4rem;
+}
+
+.am-reveal {
+    position: absolute;
+    top: 50%;
+    right: 0.35rem;
+    transform: translateY(-50%);
+    padding: 0.3rem 0.55rem;
+    border: none;
+    border-radius: 0.45rem;
+    background: transparent;
+    color: var(--ui-purple);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.am-reveal:hover {
+    background: var(--ui-purple-soft);
+}
+
+.am-reveal:focus-visible {
+    outline: 3px solid var(--ui-gold);
+    outline-offset: 1px;
+}
+
+.am-role-fixed {
+    padding: 0.6rem 0.8rem;
+    border-radius: 0.65rem;
+    background: #f1eef5;
+    font-weight: 600;
+}
+
+.am-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.am-switch input {
+    width: 2.6rem;
+    height: 1.45rem;
+    appearance: none;
+    border-radius: 999px;
+    background: #d9d0e4;
+    position: relative;
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.am-switch input::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: calc(1.45rem - 6px);
+    height: calc(1.45rem - 6px);
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transition: transform 0.15s;
+}
+
+.am-switch input:checked {
+    background: #16a34a;
+}
+
+.am-switch input:checked::after {
+    transform: translateX(1.15rem);
+}
+
+.am-switch input:focus-visible {
+    outline: 3px solid var(--ui-gold);
+    outline-offset: 2px;
+}
+
+.am-confirm {
+    padding: 0.9rem 1rem;
+    border-radius: 0.75rem;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+}
+
+.am-form-error {
+    width: 100%;
+    margin: 0;
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: #b91c1c;
+}
+
+.am-form select:disabled {
+    background: #f7f5fa;
+    color: #a596b8;
+}
+
+@media (max-width: 760px) {
+    .am-page {
+        padding: 1rem;
+    }
+
+    .am-toolbar .ui-search,
+    .am-toolbar select.ui-input {
+        flex: 1 1 100%;
+        width: 100%;
+    }
+
+    .am-grid-2 {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    /* table becomes cards */
+    .am-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+    }
+
+    .am-table,
+    .am-table tbody,
+    .am-table tr,
+    .am-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .am-table tr {
+        padding: 0.85rem 1rem;
+        border-bottom: 1px solid #f0eaf6;
+    }
+
+    .am-table td {
+        padding: 0.2rem 0;
+        border: none;
+    }
+
+    .am-table td[data-label] {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        font-size: 0.86rem;
+    }
+
+    .am-table td[data-label]::before {
+        content: attr(data-label);
+        color: var(--ui-muted);
+        font-weight: 600;
+    }
+
+    .am-table td:first-child {
+        margin-bottom: 0.35rem;
+    }
+
+    .am-actions {
+        width: 100%;
+        text-align: left;
+        padding-top: 0.5rem !important;
+    }
+
+    .am-edit {
+        width: 100%;
+    }
+}

@@ -1,0 +1,739 @@
+/* Colleges panel on Create schedule (schedule-colleges.js). Uses ui.css tokens. */
+
+.cs-card {
+  padding: 1.15rem 1.4rem 1.25rem;
+}
+
+.cs-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.cs-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ui-purple-dark);
+}
+
+.cs-sub {
+  margin-top: 0.2rem;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--ui-muted);
+  max-width: 70ch;
+}
+
+/* step tracker */
+.cs-steps {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0 0.9rem;
+  counter-reset: none;
+}
+
+.cs-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border: 1.5px solid var(--ui-line);
+  border-radius: 0.75rem;
+  background: #fbf9fd;
+  min-width: 0;
+}
+
+.cs-step + .cs-step::before {
+  content: '';
+  position: absolute;
+  left: -0.5rem;
+  top: 50%;
+  width: 0.5rem;
+  height: 2px;
+  background: var(--ui-line);
+}
+
+.cs-step-num {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ece5f4;
+  color: var(--ui-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.cs-step-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cs-step-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ui-text);
+  line-height: 1.25;
+}
+
+.cs-step-count {
+  font-size: 0.78rem;
+  color: var(--ui-muted);
+}
+
+.cs-step.has-items {
+  border-color: #d9c8ea;
+  background: #fff;
+}
+
+.cs-step.has-items .cs-step-num {
+  background: var(--ui-purple);
+  color: #fff;
+}
+
+.cs-step.has-items .cs-step-count {
+  color: var(--ui-purple);
+  font-weight: 600;
+}
+
+.cs-step.is-final.has-items .cs-step-num {
+  background: #16a34a;
+}
+
+.cs-step.is-mine {
+  border-color: var(--ui-gold);
+  box-shadow: 0 0 0 3px rgba(249, 185, 55, 0.18);
+}
+
+.cs-you {
+  display: inline-block;
+  margin-left: 0.25rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--ui-gold);
+  color: var(--ui-purple-dark);
+  font-size: 0.66rem;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+
+/* selection + actions */
+.cs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--ui-line);
+  border-radius: 0.75rem;
+  background: var(--ui-purple-soft);
+}
+
+.cs-select {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.9rem;
+  font-size: 0.86rem;
+}
+
+.cs-picked {
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
+.cs-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.cs-buttons .ui-btn {
+  min-height: 38px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+}
+
+.cs-buttons .ui-btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cs-count {
+  min-width: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: rgba(45, 22, 63, 0.12);
+  font-size: 0.74rem;
+  text-align: center;
+}
+
+.cs-linkbtn {
+  padding: 0.15rem 0;
+  border: none;
+  background: none;
+  color: var(--ui-purple);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.cs-linkbtn:hover {
+  color: var(--ui-purple-dark);
+}
+
+/* college rows */
+.cs-list {
+  list-style: none;
+  margin-top: 0.6rem;
+  border: 1px solid var(--ui-line);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.cs-list--idle {
+  opacity: 0.8;
+}
+
+.cs-row {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1.4fr) minmax(12rem, 1fr) minmax(12rem, 1fr);
+  align-items: center;
+  gap: 0.35rem 1rem;
+  padding: 0.7rem 0.9rem;
+  background: #fff;
+}
+
+.cs-row + .cs-row {
+  border-top: 1px solid var(--ui-line);
+}
+
+.cs-row.is-selected {
+  background: #fffaf0;
+  box-shadow: inset 4px 0 0 var(--ui-gold);
+}
+
+.cs-pick {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.cs-row.is-static .cs-pick {
+  cursor: default;
+}
+
+.cs-pick input {
+  flex-shrink: 0;
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--ui-purple);
+  cursor: pointer;
+}
+
+.cs-pick input:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.cs-pick input:focus-visible {
+  outline: 3px solid var(--ui-gold);
+  outline-offset: 2px;
+}
+
+.cs-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--ui-text);
+  line-height: 1.3;
+}
+
+.cs-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.cs-when {
+  font-size: 0.78rem;
+  color: var(--ui-muted);
+}
+
+.cs-work {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.cs-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.84rem;
+  color: var(--ui-text);
+}
+
+.cs-progress--muted {
+  color: var(--ui-muted);
+}
+
+.cs-progress--warn strong {
+  color: #92400e;
+}
+
+.cs-bar {
+  flex-shrink: 0;
+  width: 4.5rem;
+  height: 6px;
+  border-radius: 999px;
+  background: #ece5f4;
+  overflow: hidden;
+}
+
+.cs-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #d97706;
+}
+
+.cs-progress--ok .cs-bar span {
+  background: #16a34a;
+}
+
+.cs-note {
+  grid-column: 1 / -1;
+  margin-left: 1.8rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.5rem;
+  background: #f8f5fb;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #4b3d5e;
+}
+
+.cs-note--back {
+  background: #fef2f2;
+  color: #7f1d1d;
+}
+
+.cs-idle-toggle {
+  margin-top: 0.6rem;
+}
+
+.cs-empty,
+.cs-error {
+  margin-top: 0.85rem;
+  font-size: 0.88rem;
+  color: var(--ui-muted);
+}
+
+.cs-error {
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #fef2f2;
+  color: #991b1b;
+  font-weight: 600;
+}
+
+/* confirm dialog */
+.cs-dialog {
+  width: min(520px, calc(100vw - 2rem));
+}
+
+.cs-dialog-msg {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--ui-text);
+}
+
+.cs-dialog-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.85rem 0 0;
+}
+
+.cs-dialog-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.5rem;
+  background: var(--ui-purple-soft);
+  font-size: 0.88rem;
+}
+
+.cs-dialog-list li span {
+  color: var(--ui-muted);
+}
+
+.cs-dialog-note {
+  margin-top: 1rem;
+}
+
+@media (max-width: 900px) {
+  .cs-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cs-step + .cs-step::before {
+    display: none;
+  }
+
+  .cs-row {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+
+  .cs-status,
+  .cs-work {
+    margin-left: 1.8rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .cs-card {
+    padding: 1rem;
+  }
+
+  .cs-step {
+    padding: 0.5rem 0.55rem;
+    gap: 0.45rem;
+  }
+
+  .cs-step-num {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .cs-step-label {
+    font-size: 0.76rem;
+  }
+
+  .cs-buttons {
+    width: 100%;
+  }
+
+  .cs-buttons .ui-btn {
+    flex: 1 1 auto;
+  }
+}
+
+.cs-hint {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  background: var(--ui-purple-soft);
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: #4b3d5e;
+}
+
+/* collapsed: one summary line */
+.cs-card.is-collapsed {
+  padding: 0.75rem 1rem 0.75rem 1.25rem;
+}
+
+.cs-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+}
+
+.cs-summary .cs-title {
+  font-size: 1rem;
+}
+
+.cs-summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex: 1 1 auto;
+}
+
+.cs-summary-none {
+  font-size: 0.86rem;
+  color: var(--ui-muted);
+}
+
+.cs-summary .ui-btn,
+.cs-head-side .ui-btn {
+  min-height: 36px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.85rem;
+}
+
+.cs-head-side {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* Compare: Records Officer's version next to the Registrar's */
+.cs-compare {
+  width: min(880px, calc(100vw - 2rem));
+}
+
+.cs-compare-sub {
+  margin-top: 0.15rem;
+  font-size: 0.84rem;
+  color: var(--ui-muted);
+}
+
+.cs-compare-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.cs-compare-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.65rem;
+  background: var(--ui-purple-soft);
+}
+
+.cs-compare-stats span {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--ui-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cs-compare-stats strong {
+  font-size: 1.05rem;
+  color: var(--ui-purple-dark);
+}
+
+.cs-compare-stats em {
+  font-style: normal;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #92400e;
+}
+
+.cs-compare-h {
+  margin: 1.1rem 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ui-purple-dark);
+}
+
+.cs-compare-scroll {
+  max-height: 16rem;
+  overflow: auto;
+  border: 1px solid var(--ui-line);
+  border-radius: 0.65rem;
+}
+
+.cs-compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.cs-compare-table th,
+.cs-compare-table td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid #f1ecf6;
+  text-align: left;
+  vertical-align: top;
+}
+
+.cs-compare-table th {
+  position: sticky;
+  top: 0;
+  background: #f6f2fa;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #4b3d5e;
+}
+
+.cs-compare-table td:first-child {
+  font-weight: 600;
+}
+
+.cs-compare-table em {
+  color: var(--ui-muted);
+}
+
+.cs-ok-line {
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.55rem;
+  background: #f0fdf4;
+  color: #166534;
+  font-size: 0.86rem;
+}
+
+.cs-clash {
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.65rem;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  font-size: 0.86rem;
+  color: #78350f;
+}
+
+.cs-clash-list {
+  margin: 0.4rem 0 0.6rem 1.1rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.cs-clash-list span {
+  color: #a16207;
+}
+
+.cs-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.4rem 0 0.4rem;
+  padding: 0;
+  border: none;
+}
+
+.cs-choice legend {
+  margin-bottom: 0.3rem;
+  font-weight: 700;
+}
+
+.cs-choice label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.5rem;
+  background: #fff;
+  border: 1px solid #f5d08a;
+  cursor: pointer;
+  color: var(--ui-text);
+}
+
+.cs-choice input {
+  margin-top: 0.2rem;
+  accent-color: var(--ui-purple);
+}
+
+.cs-compare-link {
+  align-self: flex-start;
+  margin-top: 0.15rem;
+  font-size: 0.82rem;
+}
+
+.cs-dialog #csDialogClash:not([hidden]) {
+  margin-top: 0.9rem;
+}
+
+@media (max-width: 640px) {
+  .cs-compare-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cs-dialog .ui-dialog-body,
+.cs-compare .ui-dialog-body {
+  overflow-x: hidden;
+}
+
+.cs-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+/* Submit dialog (Working timetable) */
+.cs-submit {
+  width: min(560px, calc(100vw - 2rem));
+}
+
+.cs-submit-all {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.85rem 0 0.4rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cs-submit-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cs-submit-list label,
+.cs-submit-list--muted li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--ui-line);
+  border-radius: 0.6rem;
+  background: #fff;
+}
+
+.cs-submit-list label {
+  cursor: pointer;
+}
+
+.cs-submit-list label:has(input:checked) {
+  border-color: var(--ui-gold);
+  background: #fffaf0;
+}
+
+.cs-submit-list input,
+.cs-submit-all input {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-top: 0.1rem;
+  accent-color: var(--ui-purple);
+}
+
+.cs-submit-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.88rem;
+}
+
+.cs-submit-name > span {
+  font-size: 0.8rem;
+  color: var(--ui-muted);
+}
+
+.cs-submit-name .cs-submit-note {
+  color: #7f1d1d;
+}
+
+.cs-submit-list--muted li {
+  background: #faf8fc;
+}
+
+.cs-submit-name .cs-submit-info {
+  color: #6b4c00;
+}

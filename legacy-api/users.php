@@ -13,7 +13,7 @@ if (!$me) {
 }
 $actor = $me['role'];
 if (!account_actor_can_manage($actor)) {
-  json_error('Only Super Admin or Admin can manage accounts.', 403);
+  json_error('Only the University Registrar or Records Officer can manage accounts.', 403);
 }
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
@@ -199,7 +199,7 @@ function save_user(PDO $pdo, string $actor, array $body, ?int $existingId): arra
       throw new RuntimeException('That account was not found.');
     }
     if ($actor === 'admin' && !in_array($existing['role'], ['dean', 'program_chair'], true)) {
-      throw new RuntimeException('Admin can only edit Dean and Program Chair accounts.');
+      throw new RuntimeException('Records Officer can only edit Dean and Program Chair accounts.');
     }
     $confirm = (string) ($body['confirmPassword'] ?? '');
     verify_actor_password($pdo, $actor, $confirm);
@@ -225,7 +225,7 @@ function save_user(PDO $pdo, string $actor, array $body, ?int $existingId): arra
     throw new RuntimeException(
       $existingId
         ? 'Pick a role this page is allowed to assign.'
-        : 'Super Admin can create Admin, VPAA, Dean, or Program Chair accounts — not another Super Admin.'
+        : 'University Registrar can create Records Officer, VPAA, Dean, or Program Chair accounts — not another University Registrar.'
     );
   }
 
@@ -275,7 +275,7 @@ function save_user(PDO $pdo, string $actor, array $body, ?int $existingId): arra
       "SELECT COUNT(*) FROM users WHERE role = 'super_admin' AND is_active = 1"
     )->fetchColumn();
     if ($activeSa <= 1) {
-      throw new RuntimeException('Keep at least one active Super Admin account.');
+      throw new RuntimeException('Keep at least one active University Registrar account.');
     }
   }
 

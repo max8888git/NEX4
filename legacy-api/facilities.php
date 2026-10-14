@@ -41,6 +41,7 @@ if ($method === 'PUT' || $method === 'POST') {
     ]);
   } catch (Throwable $e) {
     registrar_reraise($e);
+    registrar_log_unexpected($e);
     if ($pdo->inTransaction()) {
       $pdo->rollBack();
     }

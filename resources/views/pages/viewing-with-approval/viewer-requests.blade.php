@@ -5,9 +5,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MCU-NEX | Approval</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+@endverbatim
+  @fonts
+@verbatim
   <style>
     :root {
       --purple: #5c267e;
@@ -485,7 +485,14 @@
       color: #fff;
     }
 </style>
-  <link rel="stylesheet" href="../css/app-header-sticky.css" />
+@endverbatim
+  <x-legacy-css name="app-header-sticky" />
+  <x-legacy-css name="shell-responsive" />
+  <x-legacy-css name="app-nav" />
+  <x-legacy-css name="profile" />
+  <x-legacy-css name="page-loading" />
+  <x-legacy-js name="page-loading" />
+@verbatim
 </head>
 <body>
   <div class="app-shell">
@@ -506,40 +513,32 @@
         <span class="chip">Viewing (approval)</span>
         <div class="topbar-notify" aria-label="Notifications">
           <button class="topbar-notify-btn" type="button">
-            &#128276;
+@endverbatim
+            <x-icon-bell />
+@verbatim
             <span class="topbar-notify-dot" aria-hidden="true"></span>
           </button>
           <div class="notify-menu" role="menu" aria-label="Notification list"></div>
         </div>
-        <div class="topbar-user tooltip" data-tooltip="Account" tabindex="0" aria-haspopup="true" aria-expanded="false">
-          <span>Dean Winchester</span>
-          <div class="avatar">DW</div>
-          <div class="user-menu" role="menu">
-            <a href="../index.html" role="menuitem" class="logout">Logout</a>
-          </div>
-        </div>
+@endverbatim
+        <x-profile-menu :role="$role" />
+@verbatim
       </div>
     </header>
 
     <div class="topbar-tabs" aria-label="Current section">
       <div class="topbar-datetime" id="topbar-datetime" aria-live="polite"></div>
-      <button class="nav-toggle tooltip tooltip-left" data-tooltip="Menu" type="button" aria-label="Toggle navigation" aria-expanded="false" aria-controls="main-nav">
-        <span class="nav-toggle-line"></span>
-        <span class="nav-toggle-line"></span>
-        <span class="nav-toggle-line"></span>
-      </button>
+@endverbatim
+      <x-app-nav-button />
+@verbatim
       <span class="topbar-tab topbar-tab--current" aria-current="page">Approval</span>
     </div>
 
     </div>
     <div class="layout-row">
-      <nav class="nav-bar" id="main-nav" aria-label="Main navigation">
-        <div class="nav-section-title">Navigation</div>
-        <a class="nav-link" href="dashboard.html">Dashboard</a>
-        <a class="nav-link" href="faculty-loading.html">Faculty loading</a>
-        <a class="nav-link" href="final-report.html">Reports</a>
-        <a class="nav-link active" href="viewer-requests.html">Approval</a>
-      </nav>
+@endverbatim
+      <x-app-nav :role="$role" />
+@verbatim
 
       <main class="page">
         <section class="filters-row" aria-label="Approval queue">
@@ -551,7 +550,7 @@
           <header class="main-header">
             <div>
               <div class="main-header-title">Timetable records</div>
-              <div class="main-header-sub">Each send and send-back among Admin, Super Admin, and VPAA.</div>
+              <div class="main-header-sub">Each send and send-back among Records Officer, University Registrar, and VPAA.</div>
             </div>
           </header>
           <div class="request-list" id="timetableRequestList"></div>
@@ -602,10 +601,12 @@
       setInterval(tick, 1000);
     })();
   </script>
-    <script src="../js/api-client.js"></script>
-  <script src="../js/session-boot.js"></script>
-  <script src="../js/request-records.js"></script>
-  <script src="../js/notifications.js" defer></script>
+@endverbatim
+    <x-legacy-js name="api-client" />
+  <x-legacy-js name="session-boot" />
+  <x-legacy-js name="request-records" />
+  <x-legacy-js name="notifications" defer />
+@verbatim
 </body>
 </html>
 

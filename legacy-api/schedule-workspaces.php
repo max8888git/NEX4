@@ -55,6 +55,7 @@ function ensure_schedule_workspace_schema(PDO $pdo): void
         slot VARCHAR(40) NOT NULL,
         merge_mode ENUM('auto','manual','off') NOT NULL DEFAULT 'auto',
         split_hours DECIMAL(3,1) NOT NULL DEFAULT 3.0,
+        split_hours_lab DECIMAL(3,1) NOT NULL DEFAULT 3.0,
         keep_lunch TINYINT(1) NOT NULL DEFAULT 1,
         partition_scope ENUM('off','small','medium','any') NOT NULL DEFAULT 'small',
         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -69,6 +70,13 @@ function ensure_schedule_workspace_schema(PDO $pdo): void
         "ALTER TABLE schedule_generator_settings
            ADD COLUMN partition_scope ENUM('off','small','medium','any') NOT NULL DEFAULT 'small' AFTER keep_lunch"
       );
+    }
+    if (!schema_column_exists($pdo, 'schedule_generator_settings', 'split_hours_lab')) {
+      $pdo->exec(
+        "ALTER TABLE schedule_generator_settings
+           ADD COLUMN split_hours_lab DECIMAL(3,1) NOT NULL DEFAULT 3.0 AFTER split_hours"
+      );
+      $pdo->exec('UPDATE schedule_generator_settings SET split_hours_lab = split_hours');
     }
     if (schema_column_exists($pdo, 'schedule_generator_settings', 'allow_partition')) {
       $pdo->exec('ALTER TABLE schedule_generator_settings DROP COLUMN allow_partition');
@@ -140,9 +148,31 @@ function default_generator_settings(): array
   return [
     'mergeMode' => 'auto',
     'splitHours' => 3.0,
+    'splitLabHours' => 3.0,
     'keepLunch' => true,
     'partitionScope' => 'small',
   ];
+}
+
+function clamp_split_hours($value, float $fallback): float
+{
+  $hours = is_numeric($value) ? (float) $value : $fallback;
+  if ($hours < 1) {
+    $hours = 1;
+  }
+  if ($hours > 6) {
+    $hours = 6;
+  }
+  return round($hours * 2) / 2;
+}
+
+function split_hours_for_component(array $settings, string $component): float
+{
+  $settings = normalize_generator_settings($settings);
+  if ($component === 'laboratory') {
+    return (float) $settings['splitLabHours'];
+  }
+  return (float) $settings['splitHours'];
 }
 
 function normalize_generator_settings($raw): array
@@ -153,14 +183,11 @@ function normalize_generator_settings($raw): array
   }
   $mode = strtolower(trim((string) ($raw['mergeMode'] ?? $raw['merge_mode'] ?? $out['mergeMode'])));
   $out['mergeMode'] = in_array($mode, ['auto', 'manual', 'off'], true) ? $mode : 'auto';
-  $hours = (float) ($raw['splitHours'] ?? $raw['split_hours'] ?? $out['splitHours']);
-  if ($hours < 1) {
-    $hours = 1;
-  }
-  if ($hours > 6) {
-    $hours = 6;
-  }
-  $out['splitHours'] = round($hours * 2) / 2;
+  $out['splitHours'] = clamp_split_hours($raw['splitHours'] ?? $raw['split_hours'] ?? null, (float) $out['splitHours']);
+  $labRaw = $raw['splitLabHours'] ?? $raw['split_lab_hours'] ?? null;
+  $out['splitLabHours'] = $labRaw === null
+    ? $out['splitHours']
+    : clamp_split_hours($labRaw, (float) $out['splitLabHours']);
   if (array_key_exists('keepLunch', $raw) || array_key_exists('keep_lunch', $raw)) {
     $keep = $raw['keepLunch'] ?? $raw['keep_lunch'];
     if (is_string($keep)) {
@@ -184,8 +211,11 @@ function load_generator_settings(PDO $pdo, int $termId, string $slot): array
     return $out;
   }
   $hasScope = schema_column_exists($pdo, 'schedule_generator_settings', 'partition_scope');
+  $hasLab = schema_column_exists($pdo, 'schedule_generator_settings', 'split_hours_lab');
   $stmt = $pdo->prepare(
-    'SELECT merge_mode, split_hours, keep_lunch' . ($hasScope ? ', partition_scope' : '') . '
+    'SELECT merge_mode, split_hours, keep_lunch'
+    . ($hasLab ? ', split_hours_lab' : '')
+    . ($hasScope ? ', partition_scope' : '') . '
      FROM schedule_generator_settings
      WHERE term_id = ? AND slot = ?
      LIMIT 1'
@@ -195,12 +225,16 @@ function load_generator_settings(PDO $pdo, int $termId, string $slot): array
   if (!$row) {
     return $out;
   }
-  return normalize_generator_settings([
+  $loaded = [
     'mergeMode' => (string) ($row['merge_mode'] ?? 'auto'),
     'splitHours' => (float) ($row['split_hours'] ?? 3),
     'keepLunch' => (int) ($row['keep_lunch'] ?? 1) === 1,
     'partitionScope' => (string) ($row['partition_scope'] ?? 'small'),
-  ]);
+  ];
+  if ($hasLab) {
+    $loaded['splitLabHours'] = (float) ($row['split_hours_lab'] ?? $loaded['splitHours']);
+  }
+  return normalize_generator_settings($loaded);
 }
 
 function load_working_generator_settings(PDO $pdo, int $termId, string $actor): array
@@ -227,37 +261,50 @@ function upsert_generator_settings(PDO $pdo, int $termId, string $slot, $raw): a
   if ($termId < 1 || !schema_table_exists($pdo, 'schedule_generator_settings')) {
     return $settings;
   }
+  $hasLab = schema_column_exists($pdo, 'schedule_generator_settings', 'split_hours_lab');
   if (!schema_column_exists($pdo, 'schedule_generator_settings', 'partition_scope')) {
-    $sql = 'INSERT INTO schedule_generator_settings (term_id, slot, merge_mode, split_hours, keep_lunch)
-            VALUES (?, ?, ?, ?, ?)
+    $sql = 'INSERT INTO schedule_generator_settings (term_id, slot, merge_mode, split_hours, keep_lunch'
+      . ($hasLab ? ', split_hours_lab' : '') . ')
+            VALUES (?, ?, ?, ?, ?' . ($hasLab ? ', ?' : '') . ')
             ON DUPLICATE KEY UPDATE
               merge_mode = VALUES(merge_mode),
               split_hours = VALUES(split_hours),
-              keep_lunch = VALUES(keep_lunch)';
-    $pdo->prepare($sql)->execute([
+              keep_lunch = VALUES(keep_lunch)'
+      . ($hasLab ? ', split_hours_lab = VALUES(split_hours_lab)' : '');
+    $params = [
       $termId,
       $slot,
       $settings['mergeMode'],
       $settings['splitHours'],
       $settings['keepLunch'] ? 1 : 0,
-    ]);
+    ];
+    if ($hasLab) {
+      $params[] = $settings['splitLabHours'];
+    }
+    $pdo->prepare($sql)->execute($params);
     return $settings;
   }
-  $sql = 'INSERT INTO schedule_generator_settings (term_id, slot, merge_mode, split_hours, keep_lunch, partition_scope)
-          VALUES (?, ?, ?, ?, ?, ?)
+  $sql = 'INSERT INTO schedule_generator_settings (term_id, slot, merge_mode, split_hours, keep_lunch, partition_scope'
+    . ($hasLab ? ', split_hours_lab' : '') . ')
+          VALUES (?, ?, ?, ?, ?, ?' . ($hasLab ? ', ?' : '') . ')
           ON DUPLICATE KEY UPDATE
             merge_mode = VALUES(merge_mode),
             split_hours = VALUES(split_hours),
             keep_lunch = VALUES(keep_lunch),
-            partition_scope = VALUES(partition_scope)';
-  $pdo->prepare($sql)->execute([
+            partition_scope = VALUES(partition_scope)'
+    . ($hasLab ? ', split_hours_lab = VALUES(split_hours_lab)' : '');
+  $params = [
     $termId,
     $slot,
     $settings['mergeMode'],
     $settings['splitHours'],
     $settings['keepLunch'] ? 1 : 0,
     $settings['partitionScope'],
-  ]);
+  ];
+  if ($hasLab) {
+    $params[] = $settings['splitLabHours'];
+  }
+  $pdo->prepare($sql)->execute($params);
   return $settings;
 }
 
@@ -275,11 +322,11 @@ function save_generator_settings(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? ''));
   if (!in_array($actor, ['admin', 'super_admin'], true)) {
-    throw new RuntimeException('Only Admin or Super Admin can change generate settings.');
+    throw new RuntimeException('Only the Records Officer or University Registrar can change generate settings.');
   }
   $workspace = normalize_workspace((string) ($body['workspace'] ?? 'mine'), $actor, 'create');
   if ($workspace !== 'mine') {
-    throw new RuntimeException('Generate settings apply only to My schedule.');
+    throw new RuntimeException('Generate settings apply only to Working timetable.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body, true);
   upsert_generator_settings($pdo, $termId, generator_settings_slot($workspace, $actor), $body);
@@ -420,9 +467,9 @@ function stamp_copy_origin(array $snap, string $from, string $actor, string $act
   $from = 'mine';
   $snap['origin'] = [
     'from' => $from,
-    'fromLabel' => 'My schedule',
+    'fromLabel' => 'Working timetable',
     'actor' => $actor,
-    'actorLabel' => $actor === 'super_admin' ? 'Super Admin' : 'Admin',
+    'actorLabel' => $actor === 'super_admin' ? 'University Registrar' : 'Records Officer',
     'action' => $action,
     'at' => date('Y-m-d H:i:s'),
   ];
@@ -548,7 +595,7 @@ function workspace_tab_status(
     return [
       'code' => 'saves',
       'label' => 'Named versions',
-      'detail' => 'Your saves stay private until you share them. Shared saves are visible to both Admin and Super Admin.',
+      'detail' => 'Your saves stay private until you share them. Shared saves are visible to both Records Officer and University Registrar.',
       'tone' => '',
     ];
   }
@@ -577,7 +624,7 @@ function workspace_tab_status(
       if (copy_is_forwarded($adminSubmitted)) {
         return [
           'code' => 'sent_to_vpaa',
-          'label' => 'Super Admin sent this copy to the VPAA',
+          'label' => 'University Registrar sent this copy to the VPAA',
           'detail' => trim('This snapshot stays here until the VPAA decides. ' . format_origin_line($origin)),
           'tone' => '',
           'origin' => $origin,
@@ -585,7 +632,7 @@ function workspace_tab_status(
       }
       return [
         'code' => 'waiting_super_admin',
-        'label' => 'Waiting for Super Admin',
+        'label' => 'Waiting for the University Registrar',
         'detail' => trim('Submitted ' . format_origin_line($origin)),
         'tone' => '',
         'origin' => $origin,
@@ -595,8 +642,8 @@ function workspace_tab_status(
       'code' => 'empty',
       'label' => 'Empty',
       'detail' => $actor === 'super_admin'
-        ? 'Admin has not submitted a timetable yet.'
-        : 'Nothing is pending. Submit a copy from My schedule.',
+        ? 'Records Officer has not submitted a timetable yet.'
+        : 'Nothing is pending. Submit a copy from Working timetable.',
       'tone' => '',
     ];
   }
@@ -653,14 +700,14 @@ function workspace_tab_status(
     return ['code' => 'draft', 'label' => 'Draft', 'detail' => $detail, 'tone' => ''];
   }
   if (!$hasClasses) {
-    return ['code' => 'empty', 'label' => 'Empty', 'detail' => 'My schedule is empty. Generate a timetable to start.', 'tone' => ''];
+    return ['code' => 'empty', 'label' => 'Empty', 'detail' => 'Working timetable is empty. Generate a timetable to start.', 'tone' => ''];
   }
-  $detail = 'Working draft on My schedule.';
+  $detail = 'Working draft on Working timetable.';
   if (workspace_has_classes($vpaaFinal)) {
     $detail .= ' The VPAA has published a copy on Reports; edits here are a new draft.';
   }
   if (workspace_has_classes($vpaaReturned) && $actor === 'super_admin') {
-    $detail .= ' The VPAA also returned a frozen copy on Admin’s submitted schedule.';
+    $detail .= ' The VPAA also returned a frozen copy on Records Officer’s submitted schedule.';
   }
   return ['code' => 'draft', 'label' => 'Draft', 'detail' => $detail, 'tone' => workspace_has_classes($vpaaReturned) ? 'warn' : ''];
 }
@@ -847,7 +894,7 @@ function snapshot_from_workspace_source(PDO $pdo, string $year, string $sem, int
   $slot = private_slot_for_actor($actor);
   $snap = load_workspace_copy($pdo, $termId, $slot);
   if (!workspace_has_classes($snap)) {
-    throw new RuntimeException('There is no personal schedule to submit. Generate one on My schedule first.');
+    throw new RuntimeException('There is no personal schedule to submit. Generate one on Working timetable first.');
   }
   return $snap;
 }
@@ -890,7 +937,7 @@ function list_named_saves(PDO $pdo, int $termId, string $actor, string $kind = '
       'summary' => schedule_summary($classes),
       'isShared' => (int) ($row['is_shared'] ?? 0) === 1,
       'ownerRole' => $owner,
-      'ownerLabel' => $owner === 'super_admin' ? 'Super Admin' : 'Admin',
+      'ownerLabel' => $owner === 'super_admin' ? 'University Registrar' : 'Records Officer',
       'canManage' => $owner === $role,
     ];
   }
@@ -1017,9 +1064,9 @@ function apply_workspace_to_payload(array $payload, PDO $pdo, int $termId, strin
     $snap = load_workspace_copy($pdo, $termId, private_slot_for_actor($actor));
     $payload['classes'] = $snap['classes'] ?? [];
     $payload['summary'] = isset($snap['summary']) ? $snap['summary'] : schedule_summary($payload['classes']);
-    if (!empty($snap['rooms'])) {
-      $payload['rooms'] = $snap['rooms'];
-    }
+    // the editable timetable uses today's rooms (types and college rules from Facilities),
+    // not a room list saved inside a copy
+    $payload['rooms'] = list_campus_rooms($pdo);
   } elseif ($workspace === 'submitted') {
     $returned = load_workspace_copy($pdo, $termId, 'vpaa_returned');
     $snap = workspace_has_classes($returned) ? $returned : load_workspace_copy($pdo, $termId, 'admin_submitted');
@@ -1066,7 +1113,7 @@ function save_named_schedule(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? ''));
   if (!in_array($actor, ['admin', 'super_admin'], true)) {
-    throw new RuntimeException('Only Admin or Super Admin can save a schedule.');
+    throw new RuntimeException('Only the Records Officer or University Registrar can save a schedule.');
   }
   $title = trim((string) ($body['title'] ?? $body['name'] ?? ''));
   if ($title === '') {
@@ -1090,7 +1137,7 @@ function clear_active_workspace_schedule(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? ''));
   if (!in_array($actor, ['admin', 'super_admin'], true)) {
-    throw new RuntimeException('Only Admin or Super Admin can clear a timetable.');
+    throw new RuntimeException('Only the Records Officer or University Registrar can clear a timetable.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body);
   upsert_workspace_copy($pdo, $termId, private_slot_for_actor($actor), empty_workspace_snapshot());
@@ -1101,18 +1148,18 @@ function submit_to_super_admin_copy(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? 'admin'));
   if ($actor !== 'admin') {
-    throw new RuntimeException('Only Admin can submit a timetable to Super Admin.');
+    throw new RuntimeException('Only the Records Officer can submit a timetable to the University Registrar.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body);
   if (workspace_has_classes(load_workspace_copy($pdo, $termId, 'admin_submitted'))) {
     $existing = load_workspace_copy($pdo, $termId, 'admin_submitted');
     if (copy_is_forwarded($existing) || workspace_has_classes(load_workspace_copy($pdo, $termId, 'vpaa_pending'))) {
       throw new RuntimeException(
-        'A copy of this term is still with Super Admin or the VPAA. Wait for that decision, or ask Super Admin to send it back, before submitting another.'
+        'A copy of this term is still with the University Registrar or the VPAA. Wait for that decision, or ask the University Registrar to send it back, before submitting another.'
       );
     }
     throw new RuntimeException(
-      'A timetable is already waiting for Super Admin. Retract that submission first if you want to send a different copy.'
+      'A timetable is already waiting for the University Registrar. Retract that submission first if you want to send a different copy.'
     );
   }
   $from = 'mine';
@@ -1135,8 +1182,8 @@ function submit_to_super_admin_copy(PDO $pdo, array $body): array
     $pdo,
     ['super_admin'],
     'timetable_send',
-    'Admin submitted a timetable',
-    'Admin submitted the ' . $term . ' timetable for Super Admin review.',
+    'Records Officer submitted a timetable',
+    'Records Officer submitted the ' . $term . ' timetable for the University Registrar’s review.',
     'create-schedule.html?ws=submitted',
     'Timetable'
   );
@@ -1147,15 +1194,15 @@ function retract_admin_submission(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? 'admin'));
   if ($actor !== 'admin') {
-    throw new RuntimeException('Only Admin can retract a submission to Super Admin.');
+    throw new RuntimeException('Only the Records Officer can retract a submission to the University Registrar.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body, false);
   $existing = load_workspace_copy($pdo, $termId, 'admin_submitted');
   if (!workspace_has_classes($existing)) {
-    throw new RuntimeException('There is no Super Admin submission to retract.');
+    throw new RuntimeException('There is no University Registrar submission to retract.');
   }
   if (copy_is_forwarded($existing) || workspace_has_classes(load_workspace_copy($pdo, $termId, 'vpaa_pending'))) {
-    throw new RuntimeException('Super Admin has already sent this copy to the VPAA. It cannot be retracted from here.');
+    throw new RuntimeException('University Registrar has already sent this copy to the VPAA. It cannot be retracted from here.');
   }
   clear_workspace_copy($pdo, $termId, 'admin_submitted');
   $next = trim((string) (approval_row($pdo, $termId)['published_json'] ?? '')) !== '' ? 'published' : 'draft';
@@ -1169,8 +1216,8 @@ function retract_admin_submission(PDO $pdo, array $body): array
     $pdo,
     ['super_admin'],
     'timetable_return',
-    'Admin retracted a timetable',
-    'Admin retracted the pending ' . term_offering_label($year, $sem) . ' submission.',
+    'Records Officer retracted a timetable',
+    'Records Officer retracted the pending ' . term_offering_label($year, $sem) . ' submission.',
     'create-schedule.html?ws=submitted',
     'Timetable'
   );
@@ -1181,12 +1228,12 @@ function approve_admin_submission_to_vpaa(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? ''));
   if ($actor !== 'super_admin') {
-    throw new RuntimeException('Only Super Admin can send Admin’s submission to the VPAA.');
+    throw new RuntimeException('Only the University Registrar can send Records Officer’s submission to the VPAA.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body, false);
   $snap = load_workspace_copy($pdo, $termId, 'admin_submitted');
   if (!workspace_has_classes($snap)) {
-    throw new RuntimeException('Admin has not submitted a timetable yet.');
+    throw new RuntimeException('Records Officer has not submitted a timetable yet.');
   }
   assert_complete_for_vpaa($snap);
   if (workspace_has_classes(load_workspace_copy($pdo, $termId, 'vpaa_pending'))) {
@@ -1202,9 +1249,9 @@ function approve_admin_submission_to_vpaa(PDO $pdo, array $body): array
   $snap['origin']['forwardedBy'] = 'super_admin';
   $pending = stamp_copy_origin($snap, (string) ($snap['origin']['from'] ?? 'mine'), 'super_admin', 'submit_to_vpaa');
   $pending['origin']['from'] = $snap['origin']['from'] ?? 'mine';
-  $pending['origin']['fromLabel'] = $snap['origin']['fromLabel'] ?? 'My schedule';
+  $pending['origin']['fromLabel'] = $snap['origin']['fromLabel'] ?? 'Working timetable';
   $pending['origin']['actor'] = 'super_admin';
-  $pending['origin']['actorLabel'] = 'Super Admin';
+  $pending['origin']['actorLabel'] = 'University Registrar';
   $pending['origin']['source'] = 'admin_submitted';
   upsert_workspace_copy($pdo, $termId, 'vpaa_pending', $pending);
   upsert_workspace_copy($pdo, $termId, 'admin_submitted', $snap);
@@ -1227,8 +1274,8 @@ function approve_admin_submission_to_vpaa(PDO $pdo, array $body): array
     $pdo,
     ['vpaa'],
     'timetable_send',
-    'Super Admin sent a timetable for approval',
-    'Super Admin sent the ' . $term . ' timetable to the VPAA.',
+    'University Registrar sent a timetable for approval',
+    'University Registrar sent the ' . $term . ' timetable to the VPAA.',
     'final-report.html?ws=awaiting',
     'Timetable'
   );
@@ -1236,8 +1283,8 @@ function approve_admin_submission_to_vpaa(PDO $pdo, array $body): array
     $pdo,
     ['admin'],
     'timetable_send',
-    'Super Admin sent your timetable to the VPAA',
-    'Super Admin approved the ' . $term . ' timetable you submitted and sent it to the VPAA.',
+    'University Registrar sent your timetable to the VPAA',
+    'University Registrar approved the ' . $term . ' timetable you submitted and sent it to the VPAA.',
     'final-report.html?ws=awaiting',
     'Timetable'
   );
@@ -1248,20 +1295,20 @@ function reject_admin_submission(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? ''));
   if ($actor !== 'super_admin') {
-    throw new RuntimeException('Only Super Admin can send Admin’s submission back.');
+    throw new RuntimeException('Only the University Registrar can send Records Officer’s submission back.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body, false);
   $existing = load_workspace_copy($pdo, $termId, 'admin_submitted');
   $returned = load_workspace_copy($pdo, $termId, 'vpaa_returned');
   if (!workspace_has_classes($existing) && !workspace_has_classes($returned)) {
-    throw new RuntimeException('There is no Admin submission or VPAA-returned copy to send back.');
+    throw new RuntimeException('There is no submission from the Records Officer or VPAA-returned copy to send back.');
   }
   if (copy_is_forwarded($existing) && workspace_has_classes(load_workspace_copy($pdo, $termId, 'vpaa_pending'))) {
-    throw new RuntimeException('Retract the copy waiting for the VPAA on Reports before sending this back to Admin.');
+    throw new RuntimeException('Retract the copy waiting for the VPAA on Reports before sending this back to the Records Officer.');
   }
   $note = trim((string) ($body['note'] ?? ''));
   if ($note === '') {
-    throw new RuntimeException('Say what the Admin should revise before sending this back.');
+    throw new RuntimeException('Say what the Records Officer should revise before sending this back.');
   }
   clear_workspace_copy($pdo, $termId, 'admin_submitted');
   clear_workspace_copy($pdo, $termId, 'vpaa_returned');
@@ -1278,12 +1325,12 @@ function reject_admin_submission(PDO $pdo, array $body): array
   )->execute([$next, $note, $termId]);
   record_schedule_handoff($pdo, $termId, 'send_back', 'super_admin', 'admin', $note);
   $term = term_offering_label($year, $sem);
-  $msg = 'Super Admin sent the ' . $term . ' timetable back to Admin.';
+  $msg = 'University Registrar sent the ' . $term . ' timetable back to the Records Officer.';
   $snip = notify_note_snippet($note);
   if ($snip !== '') {
     $msg .= ' ' . $snip;
   }
-  notify_roles($pdo, ['admin'], 'timetable_return', 'Super Admin sent a timetable back', $msg, 'create-schedule.html?ws=mine', 'Timetable');
+  notify_roles($pdo, ['admin'], 'timetable_return', 'University Registrar sent a timetable back', $msg, 'create-schedule.html?ws=mine', 'Timetable');
   return load_schedule_payload($pdo, $year, $sem, '', $actor, false, 'submitted', 'create');
 }
 
@@ -1291,7 +1338,7 @@ function submit_to_vpaa_from_workspace(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? ''));
   if ($actor !== 'super_admin') {
-    throw new RuntimeException('Only Super Admin can submit a timetable to the VPAA.');
+    throw new RuntimeException('Only the University Registrar can submit a timetable to the VPAA.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body);
   if (workspace_has_classes(load_workspace_copy($pdo, $termId, 'vpaa_pending'))) {
@@ -1320,8 +1367,8 @@ function submit_to_vpaa_from_workspace(PDO $pdo, array $body): array
     $pdo,
     ['vpaa'],
     'timetable_send',
-    'Super Admin sent a timetable for approval',
-    'Super Admin sent the ' . $term . ' timetable to the VPAA.',
+    'University Registrar sent a timetable for approval',
+    'University Registrar sent the ' . $term . ' timetable to the VPAA.',
     'final-report.html?ws=awaiting',
     'Timetable'
   );
@@ -1329,8 +1376,8 @@ function submit_to_vpaa_from_workspace(PDO $pdo, array $body): array
     $pdo,
     ['admin'],
     'timetable_send',
-    'Super Admin sent a timetable to the VPAA',
-    'Super Admin sent a copy of ' . $term . ' to the VPAA from My schedule.',
+    'University Registrar sent a timetable to the VPAA',
+    'University Registrar sent a copy of ' . $term . ' to the VPAA from Working timetable.',
     'final-report.html?ws=awaiting',
     'Timetable'
   );
@@ -1341,7 +1388,7 @@ function retract_vpaa_pending(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? ''));
   if ($actor !== 'super_admin') {
-    throw new RuntimeException('Only Super Admin can retract a timetable waiting for the VPAA.');
+    throw new RuntimeException('Only the University Registrar can retract a timetable waiting for the VPAA.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body, false);
   if (!workspace_has_classes(load_workspace_copy($pdo, $termId, 'vpaa_pending'))) {
@@ -1365,7 +1412,7 @@ function retract_vpaa_pending(PDO $pdo, array $body): array
     ['vpaa'],
     'timetable_return',
     'A timetable was retracted',
-    'Super Admin retracted the ' . term_offering_label($year, $sem) . ' timetable that was waiting for VPAA approval.',
+    'University Registrar retracted the ' . term_offering_label($year, $sem) . ' timetable that was waiting for VPAA approval.',
     'final-report.html?ws=awaiting',
     'Timetable'
   );
@@ -1398,7 +1445,7 @@ function open_save_into_workspace(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? ''));
   if (!in_array($actor, ['admin', 'super_admin'], true)) {
-    throw new RuntimeException('Only Admin or Super Admin can open a saved schedule.');
+    throw new RuntimeException('Only the Records Officer or University Registrar can open a saved schedule.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body);
   $row = find_save_row($pdo, (string) ($body['saveId'] ?? ''), $actor);
@@ -1412,12 +1459,12 @@ function open_save_into_workspace(PDO $pdo, array $body): array
 
 function request_open_save_shared(PDO $pdo, array $body): array
 {
-  throw new RuntimeException('Shared schedule is no longer used. Open the save in My schedule instead.');
+  throw new RuntimeException('Shared schedule is no longer used. Open the save in Working timetable instead.');
 }
 
 function decide_open_save_shared(PDO $pdo, array $body): array
 {
-  throw new RuntimeException('Shared schedule is no longer used. Open the save in My schedule instead.');
+  throw new RuntimeException('Shared schedule is no longer used. Open the save in Working timetable instead.');
 }
 
 function delete_named_save(PDO $pdo, array $body): array
@@ -1453,7 +1500,7 @@ function archive_published_offering(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? ''));
   if (!in_array($actor, ['admin', 'super_admin'], true)) {
-    throw new RuntimeException('Only Admin or Super Admin can archive a published timetable.');
+    throw new RuntimeException('Only the Records Officer or University Registrar can archive a published timetable.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body, true);
   if (!workspace_has_classes(load_workspace_copy($pdo, $termId, 'vpaa_final'))) {
@@ -1466,7 +1513,7 @@ function archive_published_offering(PDO $pdo, array $body): array
   }
   $pdo->prepare('UPDATE terms SET is_active = 0, archived_label = ? WHERE term_id = ?')
     ->execute([offering_archive_label(), $termId]);
-  $who = $actor === 'super_admin' ? 'Super Admin' : 'Admin';
+  $who = $actor === 'super_admin' ? 'University Registrar' : 'Records Officer';
   $other = $actor === 'super_admin' ? 'admin' : 'super_admin';
   notify_roles(
     $pdo,
@@ -1484,7 +1531,7 @@ function share_named_save(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? ''));
   if (!in_array($actor, ['admin', 'super_admin'], true)) {
-    throw new RuntimeException('Only Admin or Super Admin can share a save.');
+    throw new RuntimeException('Only the Records Officer or University Registrar can share a save.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body, false);
   $row = find_save_row($pdo, (string) ($body['saveId'] ?? ''), $actor);
@@ -1503,8 +1550,8 @@ function share_named_save(PDO $pdo, array $body): array
     $share ? 'timetable_send' : 'timetable_return',
     $share ? 'A saved timetable was shared with you' : 'A shared timetable was unshared',
     $share
-      ? ($actor === 'super_admin' ? 'Super Admin' : 'Admin') . ' shared “' . (string) $row['title'] . '” on Saves.'
-      : ($actor === 'super_admin' ? 'Super Admin' : 'Admin') . ' stopped sharing “' . (string) $row['title'] . '”.',
+      ? ($actor === 'super_admin' ? 'University Registrar' : 'Records Officer') . ' shared “' . (string) $row['title'] . '” on Saves.'
+      : ($actor === 'super_admin' ? 'University Registrar' : 'Records Officer') . ' stopped sharing “' . (string) $row['title'] . '”.',
     'create-schedule.html?ws=saves',
     'Timetable'
   );
@@ -1515,7 +1562,7 @@ function open_returned_into_workspace(PDO $pdo, array $body): array
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? ''));
   if ($actor !== 'super_admin') {
-    throw new RuntimeException('Only Super Admin can open the VPAA-returned copy.');
+    throw new RuntimeException('Only the University Registrar can open the VPAA-returned copy.');
   }
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body, false);
   $snap = load_workspace_copy($pdo, $termId, 'vpaa_returned');
@@ -1651,11 +1698,19 @@ function private_class_lane(array $cls): string
     . ':' . (string) ($cls['component'] ?? '');
 }
 
+function private_student_lane(array $cls): string
+{
+  if ((int) ($cls['partitionCount'] ?? 1) < 2) {
+    return '';
+  }
+  return 'p:' . (string) ($cls['sectionId'] ?? '') . ':' . (int) ($cls['partitionIndex'] ?? 1);
+}
+
 function private_lanes_for_indexes(array $classes, array $indexes): array
 {
   $lanes = [];
   foreach ($indexes as $i) {
-    $lane = private_class_lane($classes[$i] ?? []);
+    $lane = private_student_lane($classes[$i] ?? []);
     if ($lane !== '') {
       $lanes[(string) ($classes[$i]['sectionId'] ?? '')] = $lane;
     }
@@ -1768,7 +1823,8 @@ function private_assert_no_conflicts(
       }
       if ($sameSection) {
         $lane = (string) ($lanes[(string) ($c['sectionId'] ?? '')] ?? '');
-        if ($lane === '' || private_class_lane($c) !== $lane) {
+        $otherLane = private_student_lane($c);
+        if ($lane === '' || $otherLane === '' || $lane === $otherLane) {
           throw new RuntimeException(
             'That time overlaps another class for this section. Conflict with: ' .
             private_conflict_class_label($c, $m) . '.'
@@ -2525,7 +2581,7 @@ function apply_private_schedule_edit(PDO $pdo, array $body, array $classes): arr
       $classes[$si]['meetings'] = [];
     }
   } else {
-    throw new RuntimeException('That edit is not available on My schedule.');
+    throw new RuntimeException('That edit is not available on Working timetable.');
   }
 
   foreach ($classes as $i => $c) {
@@ -2644,7 +2700,7 @@ function private_refresh_snapshot_meta(array $snap, array $classes): array
 
 /**
  * After facilities mark rooms/buildings unavailable, drop those bookings from
- * Admin and Super Admin My schedule copies. Submitted / Saves / Archives stay.
+ * Records Officer and University Registrar Working timetable copies. Submitted / Saves / Archives stay.
  */
 function clear_private_schedules_for_blocked_rooms(PDO $pdo, array $blockedPublicRoomIds): array
 {
@@ -2717,7 +2773,7 @@ function run_private_workspace_mutation(PDO $pdo, array &$body, callable $fn): a
 {
   $actor = normalize_schedule_actor((string) ($body['actor'] ?? ''));
   if (!in_array($actor, ['admin', 'super_admin'], true)) {
-    throw new RuntimeException('Only Admin or Super Admin can edit a personal schedule.');
+    throw new RuntimeException('Only the Records Officer or University Registrar can edit a personal schedule.');
   }
   $action = (string) ($body['action'] ?? 'generate');
   [$year, $sem, $termId] = resolve_term_for_year_sem($pdo, $body, $action !== 'decide');
@@ -2733,6 +2789,10 @@ function run_private_workspace_mutation(PDO $pdo, array &$body, callable $fn): a
         unset($body['onlyUnscheduled'], $body['seedPrivateClasses']);
       }
     }
+    // published, locked colleges keep their classes; the rest is scheduled around them
+    if ($action === 'generate' && function_exists('apply_college_locks_to_generate')) {
+      apply_college_locks_to_generate($pdo, $termId, $body);
+    }
     $out = $fn();
     if (($out['status'] ?? '') === 'needs_merge') {
       return apply_workspace_to_payload($out, $pdo, $termId, $actor, 'mine', 'create');
@@ -2746,7 +2806,13 @@ function run_private_workspace_mutation(PDO $pdo, array &$body, callable $fn): a
   if (!workspace_has_classes($private)) {
     throw new RuntimeException('There is no personal schedule to edit. Generate one here or open a save.');
   }
+  if (function_exists('assert_edit_target_not_locked')) {
+    assert_edit_target_not_locked($pdo, $termId, $body, $private['classes'] ?? []);
+  }
   $edited = apply_private_schedule_edit($pdo, $body, $private['classes'] ?? []);
+  if (function_exists('assert_locked_colleges_unchanged')) {
+    assert_locked_colleges_unchanged($pdo, $termId, $private['classes'] ?? [], $edited['classes'] ?? []);
+  }
   $newSnap = schedule_live_snapshot($pdo, $year, $sem, $edited['classes']);
   upsert_workspace_copy($pdo, $termId, $slot, $newSnap);
   $out = ['status' => 'updated'];

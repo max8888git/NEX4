@@ -33,7 +33,12 @@ if ($method === 'POST' || $method === 'PUT' || $method === 'PATCH') {
   } catch (InvalidArgumentException $e) {
     json_error($e->getMessage());
   } catch (PDOException $e) {
+    registrar_log_unexpected($e);
     json_error('That room type could not be saved: ' . $e->getMessage());
+  } catch (Throwable $e) {
+    registrar_reraise($e);
+    registrar_log_unexpected($e);
+    json_error($e->getMessage(), 400);
   }
 }
 

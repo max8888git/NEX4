@@ -1,0 +1,55 @@
+/*
+ * Phone-width fixes for the app shell (topbar + tab row) that every page
+ * copies into its own inline <style>. Loaded last in <head> on every page so
+ * these rules win over the inline copies without editing each one.
+ *
+ * At 375px the topbar-right cluster (role chip, bell, user name, avatar) and
+ * the tab row (uppercase tabs + clock) were wider than the screen, so the
+ * whole page scrolled sideways.
+ */
+@media (max-width: 640px) {
+    .topbar {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+        gap: 0.5rem;
+    }
+
+    .topbar-title-sub {
+        display: none;
+    }
+
+    .topbar-right {
+        gap: 0.5rem;
+        min-width: 0;
+    }
+
+    /* the avatar initials stay; the full name is in the user menu context */
+    .topbar-user > span:first-child {
+        display: none;
+    }
+
+    .topbar-tabs {
+        gap: 1rem;
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .topbar-tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .topbar-tabs .topbar-datetime {
+        display: none;
+    }
+
+    /* The main column is a flex item; without min-width: 0 a wide table or
+       grid inside it stretches the page instead of scrolling in its wrapper. */
+    .layout-row > .page,
+    .layout-row > main,
+    .layout-main,
+    .shell {
+        min-width: 0;
+    }
+}

@@ -628,6 +628,7 @@ CREATE TABLE schedule_generator_settings (
   slot VARCHAR(40) NOT NULL,
   merge_mode ENUM('auto','manual','off') NOT NULL DEFAULT 'auto',
   split_hours DECIMAL(3,1) NOT NULL DEFAULT 3.0,
+  split_hours_lab DECIMAL(3,1) NOT NULL DEFAULT 3.0,
   keep_lunch TINYINT(1) NOT NULL DEFAULT 1,
   partition_scope ENUM('off','small','medium','any') NOT NULL DEFAULT 'small'
     COMMENT 'How large a section may be and still be split across other classes of the same subject',

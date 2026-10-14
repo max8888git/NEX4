@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 $configFile = __DIR__ . '/config.php';
-$schemaFile = dirname(__DIR__) . '/database_schema.sql';
+$schemaFile = dirname(__DIR__) . '/database/mcu_nex_schema.sql';
 $message = '';
 $error = '';
 $done = false;
@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       throw new RuntimeException('Database name may only contain letters, numbers and underscores.');
     }
     if (!is_file($schemaFile)) {
-      throw new RuntimeException('database_schema.sql was not found next to the api folder.');
+      throw new RuntimeException('database/mcu_nex_schema.sql was not found in the database folder.');
     }
     $dsn = "mysql:host={$host};port={$port};charset=utf8mb4";
     $pdo = new PDO($dsn, $user, $pass, [
@@ -130,7 +130,7 @@ function h($v): string
 <body>
   <div class="box">
     <h1>Install MySQL for MCU-NEX</h1>
-    <p>This creates the database, runs <code>database_schema.sql</code>, and writes <code>api/config.php</code>. Start MySQL first (XAMPP: Start MySQL). Default XAMPP login is user <strong>root</strong> with an empty password.</p>
+    <p>This creates the database, runs <code>database/mcu_nex_schema.sql</code>, and writes <code>api/config.php</code>. Start MySQL first (XAMPP: Start MySQL). Default XAMPP login is user <strong>root</strong> with an empty password.</p>
     <?php if ($message): ?><p class="ok"><?= h($message) ?></p><?php endif; ?>
     <?php if ($error): ?><p class="bad"><?= h($error) ?></p><?php endif; ?>
     <?php if ($done): ?>

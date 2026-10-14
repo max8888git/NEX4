@@ -1,0 +1,52 @@
+/* Dean / Program Chair dashboard: the college's approved timetable (college-timetable.js) */
+
+.ct-card {
+  margin-top: 1.25rem;
+  padding: 1.2rem 1.35rem 1.35rem;
+  border: 1px solid var(--ui-line);
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(45, 22, 63, 0.05);
+}
+.ct-loading { color: var(--ui-muted); }
+.ct-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.6rem 1rem; }
+.ct-kicker { font-size: 0.74rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #a16207; }
+.ct-title { margin-top: 0.15rem; font-size: 1.3rem; font-weight: 700; color: var(--ui-purple-dark); }
+.ct-sub { margin-top: 0.1rem; font-size: 0.88rem; color: var(--ui-muted); }
+.ct-status { display: flex; flex-direction: column; align-items: flex-end; gap: 0.4rem; max-width: 26rem; }
+.ct-note { font-size: 0.82rem; color: #78350f; text-align: right; }
+.ct-empty { margin-top: 1rem; }
+.ct-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.6rem 0.75rem; margin-top: 1rem; }
+.ct-field { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; font-weight: 600; color: var(--ui-muted); }
+.ct-field .ui-input { min-width: 12rem; }
+.ct-find { flex: 1 1 14rem; }
+.ct-find .ui-input { width: 100%; }
+.ct-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.ct-count { margin: 0.85rem 0 0.6rem; font-size: 0.85rem; color: var(--ui-muted); }
+.ct-count strong { color: #9a3412; }
+.ct-section { margin-bottom: 0.6rem; border: 1px solid var(--ui-line); border-radius: 0.75rem; overflow: hidden; }
+.ct-section summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.9rem;
+  background: var(--ui-purple-soft);
+  color: var(--ui-purple-dark);
+  cursor: pointer;
+}
+.ct-section summary span { font-size: 0.8rem; color: var(--ui-muted); }
+.ct-scroll { overflow-x: auto; }
+.ct-table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 0.85rem; }
+.ct-table th, .ct-table td { padding: 0.45rem 0.7rem; border-top: 1px solid #f1ecf6; text-align: left; vertical-align: top; }
+.ct-table th { background: #faf8fc; color: #4b3d5e; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+.ct-nowrap { white-space: nowrap; }
+.ct-table tr.is-unplaced td { background: #fff7ed; color: #9a3412; }
+
+@media (max-width: 640px) {
+  .ct-card { padding: 1rem; }
+  .ct-status { align-items: flex-start; }
+  .ct-note { text-align: left; }
+  .ct-field .ui-input { min-width: 0; width: 100%; }
+  .ct-field { flex: 1 1 100%; }
+}

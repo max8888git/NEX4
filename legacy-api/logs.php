@@ -9,7 +9,7 @@ if (!$me) {
   json_error('Log in to view the transaction log.', 401);
 }
 if (!in_array((string) $me['role'], ['admin', 'super_admin'], true)) {
-  json_error('Only Admin or Super Admin can view the transaction log.', 403);
+  json_error('Only the Records Officer or University Registrar can view the transaction log.', 403);
 }
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';

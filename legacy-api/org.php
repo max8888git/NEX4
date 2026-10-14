@@ -26,6 +26,7 @@ if ($method === 'PUT') {
     json_ok(['org' => org_document($pdo)]);
   } catch (Throwable $e) {
     registrar_reraise($e);
+    registrar_log_unexpected($e);
     if ($pdo->inTransaction()) {
       $pdo->rollBack();
     }
@@ -64,6 +65,7 @@ if ($method === 'POST') {
     json_error('Unknown org action');
   } catch (Throwable $e) {
     registrar_reraise($e);
+    registrar_log_unexpected($e);
     if ($pdo->inTransaction()) {
       $pdo->rollBack();
     }

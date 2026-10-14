@@ -1,0 +1,236 @@
+/* Requests page (Admin / Super Admin); building blocks come from ui.css. */
+
+.req-page {
+    width: 100%;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+.req-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.req-toolbar .ui-search {
+    flex: 0 1 300px;
+    min-width: 220px;
+}
+
+.req-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.6rem;
+}
+
+.req-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--ui-line);
+    border-radius: 0.9rem;
+    background: #fff;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.req-row:hover {
+    border-color: rgba(92, 38, 126, 0.35);
+    box-shadow: 0 8px 22px rgba(45, 22, 63, 0.08);
+}
+
+.req-row:focus-visible {
+    outline: 3px solid var(--ui-gold);
+    outline-offset: 2px;
+}
+
+.req-row-main {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 0.3rem;
+}
+
+.req-row-top {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.req-when {
+    font-size: 0.8rem;
+    color: var(--ui-muted);
+}
+
+.req-subject {
+    font-size: 0.98rem;
+    font-weight: 700;
+    color: var(--ui-text);
+}
+
+.req-who {
+    font-size: 0.84rem;
+    color: var(--ui-muted);
+}
+
+.req-topics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.req-preview {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: #4b3d5e;
+}
+
+.req-row-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    flex-shrink: 0;
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: var(--ui-purple);
+}
+
+.req-row-cta svg {
+    width: 18px;
+    height: 18px;
+}
+
+.req-skeleton {
+    height: 108px;
+    border-radius: 0.9rem;
+}
+
+/* Detail dialog */
+.req-dialog-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.6rem;
+    margin-top: 0.45rem;
+    font-size: 0.84rem;
+    color: var(--ui-muted);
+}
+
+.req-dialog-date {
+    flex-basis: 100%;
+}
+
+.req-section + .req-section {
+    margin-top: 1.1rem;
+}
+
+.req-section-label {
+    margin-bottom: 0.45rem;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ui-purple);
+}
+
+.req-classes {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.4rem;
+}
+
+.req-classes li {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 0.6rem;
+    background: var(--ui-purple-soft);
+    font-size: 0.88rem;
+}
+
+.req-classes span {
+    color: var(--ui-muted);
+}
+
+.req-body {
+    white-space: pre-wrap;
+    font-size: 0.92rem;
+    line-height: 1.55;
+}
+
+.req-note {
+    font-size: 0.88rem;
+    line-height: 1.5;
+}
+
+.req-note + .req-note {
+    margin-top: 0.4rem;
+}
+
+.req-note--reply {
+    padding: 0.55rem 0.75rem;
+    border-radius: 0.6rem;
+    background: #f1eef5;
+}
+
+.req-reply-block {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--ui-line);
+}
+
+.req-reply-block .ui-field-hint a {
+    color: var(--ui-purple);
+    font-weight: 600;
+}
+
+.req-action-error {
+    width: 100%;
+    margin: 0;
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: #b91c1c;
+}
+
+@media (max-width: 640px) {
+    .req-page {
+        padding: 1rem;
+    }
+
+    .req-toolbar .ui-search {
+        flex: 1 1 100%;
+    }
+
+    .req-row {
+        align-items: flex-start;
+    }
+
+    .req-row-cta span,
+    .req-row-cta {
+        font-size: 0;
+    }
+
+    .req-row-cta svg {
+        width: 20px;
+        height: 20px;
+    }
+}

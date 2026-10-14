@@ -36,7 +36,7 @@ if ($method === 'POST') {
       json_error('Invalid email or password.', 401);
     }
     if ((int) $row['is_active'] !== 1) {
-      json_error('This account is inactive. Ask Super Admin to turn it back on.', 403);
+      json_error('This account is inactive. Ask the University Registrar to turn it back on.', 403);
     }
     login_session((int) $row['user_id']);
     $user = session_user_payload($pdo);

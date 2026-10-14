@@ -14,7 +14,7 @@ class LogsController extends Controller
             return response()->json(['ok' => false, 'error' => 'Log in to view the transaction log.'], 401);
         }
         if (! in_array((string) $me['role'], ['admin', 'super_admin'], true)) {
-            return response()->json(['ok' => false, 'error' => 'Only Admin or Super Admin can view the transaction log.'], 403);
+            return response()->json(['ok' => false, 'error' => 'Only the Records Officer or University Registrar can view the transaction log.'], 403);
         }
         $rows = TransactionLog::query()
             ->orderByDesc('created_at')

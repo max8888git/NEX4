@@ -38,6 +38,7 @@ if ($method === 'POST') {
     json_ok(($saved ?: []) + sections_payload($pdo));
   } catch (Throwable $e) {
     registrar_reraise($e);
+    registrar_log_unexpected($e);
     if ($pdo->inTransaction()) {
       $pdo->rollBack();
     }
@@ -81,6 +82,7 @@ if ($method === 'PATCH') {
     json_ok(['sections' => list_sections($pdo)] + sections_payload($pdo));
   } catch (Throwable $e) {
     registrar_reraise($e);
+    registrar_log_unexpected($e);
     if ($pdo->inTransaction()) {
       $pdo->rollBack();
     }
@@ -108,6 +110,7 @@ if ($method === 'DELETE') {
     ] + sections_payload($pdo));
   } catch (Throwable $e) {
     registrar_reraise($e);
+    registrar_log_unexpected($e);
     if ($pdo->inTransaction()) {
       $pdo->rollBack();
     }
@@ -669,6 +672,7 @@ function save_section_plan(PDO $pdo, array $body): array
     $nextCounts[(string) $row['code']] = (int) $row['studentCount'];
   }
   foreach ($nextCounts as $code => $students) {
+    $code = (string) $code;
     $label = section_log_phrase($programName, $yearLevel, $code, false);
     if (!array_key_exists($code, $priorCounts)) {
       record_transaction($pdo, 'Add', 'section', 'Added ' . $label . ' (' . section_student_phrase($students) . ').');
@@ -682,6 +686,7 @@ function save_section_plan(PDO $pdo, array $body): array
     }
   }
   foreach ($priorCounts as $code => $students) {
+    $code = (string) $code;
     if (array_key_exists($code, $nextCounts)) {
       continue;
     }
@@ -689,7 +694,7 @@ function save_section_plan(PDO $pdo, array $body): array
       $pdo,
       'Delete',
       'section',
-      'Deleted ' . section_log_phrase($programName, $yearLevel, (string) $code, false) . ' (' . section_student_phrase($students) . ').'
+      'Deleted ' . section_log_phrase($programName, $yearLevel, $code, false) . ' (' . section_student_phrase($students) . ').'
     );
   }
 
@@ -922,8 +927,9 @@ function section_program_name(PDO $pdo, int $programId): string
   return $name !== '' ? $name : (string) $row['college_name'];
 }
 
-function section_log_phrase(string $program, int $year, string $code, bool $retake): string
+function section_log_phrase(string $program, int $year, string|int $code, bool $retake): string
 {
+  $code = (string) $code;
   return ($retake ? 'retake section ' : 'section ') . $program . ' ' . $year . '-' . $code;
 }
 

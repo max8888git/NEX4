@@ -351,8 +351,8 @@ function replace_courses(PDO $pdo, int $curriculumId, array $courses): void
        curriculum_id, year_level, term_code, course_id, course_title,
        lecture_units, lab_units, lecture_room_type, lab_room_type,
        prerequisite_1, prerequisite_2, prerequisite_3, display_order,
-       total_hours_week, total_hours_sem
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+       total_hours_week, total_hours_sem, is_elective
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
 
   $order = 0;
@@ -390,7 +390,7 @@ function replace_courses(PDO $pdo, int $curriculumId, array $courses): void
     $ins->execute([
       $curriculumId, $year, $term, $code, $title, $lec, $lab,
       $lecType, $labType, $p1, $p2, $p3, $order++,
-      $hours['week'], $hours['sem'],
+      $hours['week'], $hours['sem'], !empty($c['is_elective']) ? 1 : 0,
     ]);
     $rowId = (int) $pdo->lastInsertId();
     $inserted[$code] = ['id' => $rowId, 'course' => $c, 'p1' => $p1, 'p2' => $p2, 'p3' => $p3, 'lecType' => $lecType, 'labType' => $labType];

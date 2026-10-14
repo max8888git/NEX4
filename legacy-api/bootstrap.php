@@ -21,6 +21,33 @@ function registrar_reraise(Throwable $e): void
   }
 }
 
+/**
+ * Validation messages are shown in the page. Database failures and type errors
+ * are also written to the Laravel log so they can be found after the popup is closed.
+ */
+function registrar_log_unexpected(Throwable $e): void
+{
+  if ($e instanceof RegistrarResult) {
+    return;
+  }
+  if ($e instanceof RuntimeException && !($e instanceof PDOException)) {
+    return;
+  }
+  if ($e instanceof InvalidArgumentException) {
+    return;
+  }
+  $text = '[data-management] ' . $e::class . ': ' . $e->getMessage()
+    . ' in ' . $e->getFile() . ':' . $e->getLine();
+  if (class_exists(\Illuminate\Support\Facades\Log::class)) {
+    try {
+      \Illuminate\Support\Facades\Log::error($text);
+      return;
+    } catch (Throwable $ignored) {
+    }
+  }
+  error_log($text);
+}
+
 function start_app_session(): void
 {
   if (session_status() === PHP_SESSION_ACTIVE) {
@@ -40,8 +67,8 @@ start_app_session();
 function account_role_label(string $role): string
 {
   return [
-    'super_admin' => 'Super Admin',
-    'admin' => 'Admin',
+    'super_admin' => 'University Registrar',
+    'admin' => 'Records Officer',
     'vpaa' => 'VPAA',
     'dean' => 'Dean',
     'program_chair' => 'Program Chair',
@@ -251,10 +278,15 @@ function pdo_from_config(array $cfg, bool $withDatabase = true): PDO
 function db(): PDO
 {
   static $pdo = null;
-  if ($pdo instanceof PDO) {
+  static $for = null;
+  $cfg = load_config();
+  // one connection per process, but a new one if the configured database changed
+  // (only happens in the test suite, which switches between copies of the database)
+  $key = is_array($cfg) ? ($cfg['host'] ?? '') . '|' . ($cfg['port'] ?? '') . '|' . ($cfg['name'] ?? '') : '';
+  if ($pdo instanceof PDO && $for === $key) {
     return $pdo;
   }
-  $cfg = load_config();
+  $for = $key;
   if (!$cfg) {
     json_error('MySQL is not configured. Open /api/install.php to create the database.', 503);
   }
@@ -1088,7 +1120,7 @@ function public_schedule_handoff(array $row): array
   if ($copy === 'live') {
     $what = $term . ' live timetable';
   } elseif ($copy === 'snapshot') {
-    $what = $term . ' timetable (Admin’s snapshot)';
+    $what = $term . ' timetable (Records Officer’s snapshot)';
   } elseif ($copy === 'returned') {
     $what = $term . ' timetable (package the VPAA returned)';
   }
@@ -1487,7 +1519,7 @@ function create_text_schedule_request(PDO $pdo, array $input): array
   }
   $collegeId = $user['college_id'] !== null ? (int) $user['college_id'] : null;
   if (!$collegeId) {
-    throw new RuntimeException('Your account is not assigned to a college. Ask Super Admin to set that first.');
+    throw new RuntimeException('Your account is not assigned to a college. Ask the University Registrar to set that first.');
   }
   $status = $role === 'dean' ? 'pending_admin' : 'pending_dean';
   $pdo->prepare(
@@ -1586,8 +1618,8 @@ function decide_text_schedule_request(PDO $pdo, int $id, bool $forward, string $
         $pdo,
         [$chairId],
         'text_forwarded',
-        'Your request was forwarded to Admin',
-        $deanName . ' forwarded your schedule-change request to Admin.',
+        'Your request was forwarded to the Records Officer',
+        $deanName . ' forwarded your schedule-change request to the Records Officer.',
         'requests',
         'Requests'
       );
@@ -1619,7 +1651,7 @@ function reply_text_schedule_request(PDO $pdo, int $id, bool $done, string $note
   }
   $role = (string) ($user['role'] ?? '');
   if ($role !== 'admin' && $role !== 'super_admin') {
-    throw new RuntimeException('Only Admin can close or send back a request.');
+    throw new RuntimeException('Only the Records Officer can close or send back a request.');
   }
   if ($id < 1) {
     throw new RuntimeException('That request was not found.');
@@ -1631,7 +1663,7 @@ function reply_text_schedule_request(PDO $pdo, int $id, bool $done, string $note
   $forwarded = trim((string) ($row['forwarded_by_name'] ?? ''));
   $visible = $fromRole === 'dean' || ($fromRole === 'program_chair' && $forwarded !== '');
   if (!$row || (string) ($row['status'] ?? '') !== 'pending_admin' || !$visible) {
-    throw new RuntimeException('That request is not waiting for Admin.');
+    throw new RuntimeException('That request is not waiting for the Records Officer.');
   }
   $note = trim($note);
   if (strlen($note) > 4000) {
@@ -1643,7 +1675,7 @@ function reply_text_schedule_request(PDO $pdo, int $id, bool $done, string $note
      SET status = ?, admin_reply = ?, replied_at = NOW()
      WHERE request_id = ?'
   )->execute([$next, $note !== '' ? $note : null, $id]);
-  $actor = (string) ($user['full_name'] ?? 'Admin');
+  $actor = (string) ($user['full_name'] ?? 'Records Officer');
   $labels = [];
   foreach (request_classes_from_row($row) as $class) {
     if ($class['label'] !== '') {
@@ -1657,7 +1689,7 @@ function reply_text_schedule_request(PDO $pdo, int $id, bool $done, string $note
       $about .= ' and ' . (count($labels) - 2) . ' more';
     }
   }
-  $title = $done ? 'Admin marked your request done' : 'Admin sent your request back';
+  $title = $done ? 'Records Officer marked your request done' : 'Records Officer sent your request back';
   $msg = $done
     ? $actor . ' marked your schedule-change request' . $about . ' as done. The timetable itself was not changed.'
     : $actor . ' sent your schedule-change request' . $about . ' back.';
@@ -1677,7 +1709,7 @@ function reply_text_schedule_request(PDO $pdo, int $id, bool $done, string $note
         $pdo,
         $deanIds,
         'text_reply',
-        $done ? 'Admin marked a forwarded request done' : 'Admin sent a forwarded request back',
+        $done ? 'Records Officer marked a forwarded request done' : 'Records Officer sent a forwarded request back',
         $msg,
         'requests',
         'Requests'
@@ -1689,7 +1721,8 @@ function reply_text_schedule_request(PDO $pdo, int $id, bool $done, string $note
 
 function ensure_notifications_schema(PDO $pdo): void
 {
-  if (!schema_table_exists($pdo, 'users')) {
+  // CREATE TABLE commits any open transaction in MySQL; skip it when the table exists
+  if (!schema_table_exists($pdo, 'users') || schema_table_exists($pdo, 'user_notifications')) {
     return;
   }
   $pdo->exec(
@@ -1721,6 +1754,17 @@ function notification_href_for_role(string $role, string $page): string
   if ($folder === '') {
     return 'index.html';
   }
+  // curriculums made by the colleges (curriculum-reviews.php)
+  if ($page === 'curriculum-builder') {
+    return in_array($role, ['dean', 'program_chair'], true) ? $folder . '/curriculum-builder.html' : $folder . '/curriculums/review.html';
+  }
+  if ($page === 'curriculum-review') {
+    return in_array($role, ['admin', 'super_admin'], true) ? $folder . '/curriculums/review.html' : $folder . '/curriculum-builder.html';
+  }
+  // the college's own approved timetable (college-timetable.js)
+  if ($page === 'college-timetable') {
+    return $folder . '/dashboard.html';
+  }
   if ($page === 'final-report' || strpos($page, 'final-report') === 0) {
     $query = '';
     $qPos = strpos($page, '?');
@@ -1731,6 +1775,11 @@ function notification_href_for_role(string $role, string $page): string
   }
   if ($role === 'vpaa' || $role === 'dean' || $role === 'program_chair') {
     return $folder . '/viewer-requests.html';
+  }
+  // Records Officer pages named by the notification (e.g. create-schedule.html?ws=submitted
+  // for a timetable waiting for review) open that page, not Requests.
+  if (preg_match('#^create-schedule\.html(\?[A-Za-z0-9=&_-]*)?$#', $page)) {
+    return $folder . '/' . $page;
   }
   return $folder . '/requests.html';
 }
